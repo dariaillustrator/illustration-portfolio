@@ -5,6 +5,7 @@ import SiteFooter from './components/SiteFooter';
 import FaqOverlay from './components/FaqOverlay';
 import ContactOverlay from './components/ContactOverlay';
 import LegalOverlay from './components/LegalOverlay';
+import CookieConsent from './components/CookieConsent';
 import HomePage from './pages/HomePage';
 import AboutPage from './pages/AboutPage';
 import PricingPage from './pages/PricingPage';
@@ -22,6 +23,7 @@ function App() {
           <FaqOverlay />
           <ContactOverlay />
           <LegalOverlay />
+          <CookieConsent />
           <main className="main-content">
             <Routes>
               <Route path="/" element={<HomePage />} />
