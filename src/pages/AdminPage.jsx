@@ -192,6 +192,7 @@ export default function AdminPage() {
   // Feature request states
   const [requestContent, setRequestContent] = useState('');
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [requests, setRequests] = useState([]);
 
   const fileInputRef = useRef(null);
 
@@ -238,6 +239,29 @@ export default function AdminPage() {
     }
   };
 
+  const loadRequests = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('feature_requests')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+        const filtered = data.filter(req => {
+          if (!req.completed) return true;
+          if (!req.completed_at) return false;
+          return new Date(req.completed_at) > sixHoursAgo;
+        });
+        setRequests(filtered);
+      }
+    } catch (err) {
+      console.error("Error loading requests:", err.message);
+    }
+  };
+
   const loadGalleryItems = async () => {
     setIsLoadingItems(true);
     try {
@@ -264,6 +288,8 @@ export default function AdminPage() {
       setActiveItems(sortArtworks(active, mode));
       setParkedItems(sortArtworks(parked, 'chromatic_asc'));
       setIsDirty(false);
+      
+      await loadRequests();
     } catch (err) {
       console.error("Error loading gallery items:", err.message);
     } finally {
@@ -329,26 +355,31 @@ export default function AdminPage() {
 
       if (settingsError) throw settingsError;
 
-      // 2. Update item custom_orders
-      if (sortingMode === 'manual') {
-        const promises = activeItems.map((item, index) => {
-          return supabase
-            .from('gallery_items')
-            .update({ custom_order: index + 1 })
-            .eq('id', item.id);
-        });
-        const results = await Promise.all(promises);
-        const error = results.find(r => r.error);
-        if (error) throw error.error;
-      } else {
-        // Reset custom_order to null for all active artworks
-        const { error: resetError } = await supabase
+      // 2. Update all active items (is_parked = false, custom_order if manual)
+      const activePromises = activeItems.map((item, index) => {
+        return supabase
           .from('gallery_items')
-          .update({ custom_order: null })
-          .neq('title', '__site_settings__')
-          .eq('is_parked', false);
-        if (resetError) throw resetError;
-      }
+          .update({
+            is_parked: false,
+            custom_order: sortingMode === 'manual' ? index + 1 : null
+          })
+          .eq('id', item.id);
+      });
+
+      // 3. Update all parked items (is_parked = true, custom_order = null)
+      const parkedPromises = parkedItems.map(item => {
+        return supabase
+          .from('gallery_items')
+          .update({
+            is_parked: true,
+            custom_order: null
+          })
+          .eq('id', item.id);
+      });
+
+      const results = await Promise.all([...activePromises, ...parkedPromises]);
+      const error = results.find(r => r.error);
+      if (error) throw error.error;
 
       await loadGalleryItems();
       setUploadSuccess(true);
@@ -361,49 +392,54 @@ export default function AdminPage() {
     }
   };
 
-  const handlePublishParked = async (item) => {
-    setIsLoadingItems(true);
+  const handleUnparkItemLocal = (item) => {
+    const newParked = parkedItems.filter(p => p.id !== item.id);
+    const newActive = [...activeItems, item];
+    setParkedItems(newParked);
+    setActiveItems(sortArtworks(newActive, sortingMode));
+    setIsDirty(true);
+  };
+
+  const handleParkItemLocal = (index) => {
+    const item = activeItems[index];
+    const newActive = activeItems.filter((_, idx) => idx !== index);
+    const newParked = [...parkedItems, item];
+    setActiveItems(newActive);
+    setParkedItems(sortArtworks(newParked, 'chromatic_asc'));
+    setIsDirty(true);
+  };
+
+  const handleCompleteRequest = async (id) => {
     try {
-      const isManualMode = sortingMode === 'manual';
-      let nextOrder = null;
-
-      if (isManualMode) {
-        // Shift active items
-        const { data: activeList, error: fetchError } = await supabase
-          .from('gallery_items')
-          .select('id, custom_order')
-          .eq('is_parked', false)
-          .neq('title', '__site_settings__');
-
-        if (!fetchError && activeList) {
-          const updates = activeList.map(activeItem => {
-            const currentOrder = activeItem.custom_order ?? 1;
-            return supabase
-              .from('gallery_items')
-              .update({ custom_order: currentOrder + 1 })
-              .eq('id', activeItem.id);
-          });
-          await Promise.all(updates);
-        }
-        nextOrder = 1;
-      }
-
-      const { error: updateError } = await supabase
-        .from('gallery_items')
+      const { error } = await supabase
+        .from('feature_requests')
         .update({
-          is_parked: false,
-          custom_order: nextOrder
+          completed: true,
+          completed_at: new Date().toISOString()
         })
-        .eq('id', item.id);
+        .eq('id', id);
 
-      if (updateError) throw updateError;
-
-      await loadGalleryItems();
+      if (error) throw error;
+      await loadRequests();
     } catch (err) {
-      console.error("Failed to publish parked item:", err.message);
-      setErrorMsg(`Failed to publish parked item: ${err.message}`);
-    } finally {
-      setIsLoadingItems(false);
+      console.error("Failed to complete request:", err.message);
+      setErrorMsg(`Failed to complete request: ${err.message}`);
+    }
+  };
+
+  const handleDeleteRequest = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this request?")) return;
+    try {
+      const { error } = await supabase
+        .from('feature_requests')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      await loadRequests();
+    } catch (err) {
+      console.error("Failed to delete request:", err.message);
+      setErrorMsg(`Failed to delete request: ${err.message}`);
     }
   };
 
@@ -424,6 +460,7 @@ export default function AdminPage() {
       setRequestContent('');
       setUploadSuccess(true);
       setTimeout(() => setUploadSuccess(false), 3000);
+      await loadRequests();
     } catch (err) {
       console.error("Failed to submit feature request:", err.message);
       setErrorMsg(`Failed to submit request: ${err.message}`);
@@ -765,9 +802,9 @@ export default function AdminPage() {
 
         .keypad-btn {
           height: 68px;
-          border-radius: 50%;
+          border-radius: 12px;
           background: rgba(var(--bg-primary-rgb), 0.03);
-          border: 1px solid var(--border);
+          border: 1px solid var(--text-primary);
           color: var(--text-primary);
           font-size: 1.6rem;
           font-weight: 500;
@@ -845,9 +882,9 @@ export default function AdminPage() {
           gap: 0.5rem;
           background: transparent;
           color: var(--text-primary);
-          border: 1px solid var(--border);
+          border: 1px solid var(--text-primary);
           padding: 0.6rem 1.2rem;
-          border-radius: var(--radius-md);
+          border-radius: 12px;
           cursor: pointer;
           font-weight: 500;
           transition: all 0.2s ease;
@@ -1015,7 +1052,7 @@ export default function AdminPage() {
         .action-button {
           width: 100%;
           padding: 0.9rem;
-          border-radius: var(--radius-md);
+          border-radius: 12px;
           background: var(--text-primary);
           color: var(--bg-primary);
           font-weight: 600;
@@ -1031,7 +1068,8 @@ export default function AdminPage() {
 
         .action-button:hover:not(:disabled) {
           transform: translateY(-2px);
-          opacity: 0.9;
+          opacity: 0.95;
+          box-shadow: 0 4px 15px rgba(var(--text-primary-rgb), 0.15);
         }
 
         .action-button:active:not(:disabled) {
@@ -1330,12 +1368,12 @@ export default function AdminPage() {
           align-items: center;
           justify-content: center;
           gap: 0.2rem;
-          padding: 0.35rem 0.55rem;
+          padding: 0.4rem 0.7rem;
           font-size: 0.75rem;
           font-weight: 600;
-          border-radius: 6px;
-          border: 1px solid var(--border);
-          background: rgba(var(--text-primary-rgb), 0.03);
+          border-radius: 12px;
+          border: 1px solid var(--text-primary);
+          background: transparent;
           color: var(--text-primary);
           transition: all 0.2s ease;
           cursor: pointer;
@@ -1372,7 +1410,7 @@ export default function AdminPage() {
           color: var(--text-primary);
           background: transparent;
           border: 1px solid var(--text-primary);
-          border-radius: 8px;
+          border-radius: 12px;
           cursor: pointer;
           transition: all 0.3s ease;
         }
@@ -1566,7 +1604,7 @@ export default function AdminPage() {
           padding: 0.5rem;
           font-size: 0.75rem;
           font-weight: 600;
-          border-radius: var(--radius-sm);
+          border-radius: 12px;
           background: var(--text-primary);
           color: var(--bg-primary);
           border: none;
@@ -1591,11 +1629,157 @@ export default function AdminPage() {
           border-top: 1px solid var(--border);
         }
 
+        .request-dashboard-layout {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 3rem;
+          width: 100%;
+        }
+
+        @media (max-width: 768px) {
+          .request-dashboard-layout {
+            grid-template-columns: 1fr;
+            gap: 2rem;
+          }
+        }
+
+        .request-submit-panel {
+          display: flex;
+          flex-direction: column;
+        }
+
         .request-form {
           display: flex;
           flex-direction: column;
           gap: 1rem;
-          max-width: 600px;
+          width: 100%;
+        }
+
+        .request-list-panel {
+          display: flex;
+          flex-direction: column;
+          background: rgba(var(--bg-primary-rgb), 0.01);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          padding: 1.5rem;
+        }
+
+        .request-list-empty {
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+          text-align: center;
+          padding: 2rem 0;
+        }
+
+        .request-list-container {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+          max-height: 400px;
+          overflow-y: auto;
+          padding-right: 0.5rem;
+        }
+
+        /* Custom Scrollbar for request list */
+        .request-list-container::-webkit-scrollbar {
+          width: 6px;
+        }
+        .request-list-container::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .request-list-container::-webkit-scrollbar-thumb {
+          background: var(--border);
+          border-radius: 3px;
+        }
+
+        .request-item-card {
+          background: var(--glass-bg);
+          border: 1px solid var(--glass-border);
+          border-radius: var(--radius-md);
+          padding: 1rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.8rem;
+          transition: all 0.2s ease;
+        }
+
+        .request-item-card.completed {
+          opacity: 0.6;
+          border-color: rgba(16, 185, 129, 0.2);
+          background: rgba(16, 185, 129, 0.02);
+        }
+
+        .request-item-content {
+          font-size: 0.9rem;
+          color: var(--text-primary);
+          line-height: 1.4;
+          white-space: pre-wrap;
+        }
+
+        .request-item-card.completed .request-item-content {
+          text-decoration: line-through;
+          color: var(--text-secondary);
+        }
+
+        .request-item-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 0.75rem;
+        }
+
+        .request-item-date {
+          color: var(--text-secondary);
+        }
+
+        .request-item-actions {
+          display: flex;
+          gap: 0.8rem;
+          align-items: center;
+        }
+
+        .request-action-btn {
+          display: flex;
+          align-items: center;
+          gap: 0.3rem;
+          background: transparent;
+          border: 1px solid var(--border);
+          padding: 0.35rem 0.6rem;
+          border-radius: 12px;
+          font-size: 0.75rem;
+          cursor: pointer;
+          color: var(--text-primary);
+          transition: all 0.2s ease;
+        }
+
+        .request-action-btn.complete-btn {
+          border-color: #10b981;
+          color: #10b981;
+        }
+
+        .request-action-btn.complete-btn:hover {
+          background: #10b981;
+          color: #ffffff;
+        }
+
+        .request-action-btn.delete-btn {
+          border-color: #ef4444;
+          color: #ef4444;
+        }
+
+        .request-action-btn.delete-btn:hover {
+          background: #ef4444;
+          color: #ffffff;
+        }
+
+        .completed-badge {
+          background: rgba(16, 185, 129, 0.1);
+          color: #10b981;
+          border: 1px solid rgba(16, 185, 129, 0.2);
+          padding: 0.2rem 0.5rem;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 0.7rem;
         }
 
         .request-textarea {
@@ -1630,7 +1814,7 @@ export default function AdminPage() {
           color: var(--text-primary);
           background: transparent;
           border: 1px solid var(--text-primary);
-          border-radius: 8px;
+          border-radius: 12px;
           cursor: pointer;
           transition: all 0.3s ease;
         }
@@ -1952,7 +2136,7 @@ export default function AdminPage() {
                       <div className="parked-details">
                         <div className="parked-title">{item.title}</div>
                         <button 
-                          onClick={() => handlePublishParked(item)}
+                          onClick={() => handleUnparkItemLocal(item)}
                           className="publish-parked-btn"
                         >
                           <Sparkles size={12} />
@@ -2093,6 +2277,15 @@ export default function AdminPage() {
                             <ArrowRight size={14} />
                           </button>
                         </div>
+
+                        <button 
+                          onClick={() => handleParkItemLocal(index)}
+                          className="move-btn"
+                          style={{ width: '100%', marginTop: '0.6rem', justifyContent: 'center' }}
+                        >
+                          <Lock size={12} />
+                          <span>Move to Not Sure Yet</span>
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -2106,37 +2299,93 @@ export default function AdminPage() {
                 <Sparkles size={20} />
                 Request new features or improvements
               </h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '2rem' }}>
                 Do you have ideas for improving the site's design or want to request new features for this admin panel? Let me know here.
               </p>
               
-              <form onSubmit={handleRequestSubmit} className="request-form">
-                <textarea
-                  className="request-textarea"
-                  placeholder="Describe your design updates or new functional ideas..."
-                  value={requestContent}
-                  onChange={(e) => setRequestContent(e.target.value)}
-                  disabled={isSubmittingRequest}
-                  required
-                />
-                <button
-                  type="submit"
-                  disabled={isSubmittingRequest || !requestContent.trim()}
-                  className="request-submit-btn"
-                >
-                  {isSubmittingRequest ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Sending...
-                    </>
+              <div className="request-dashboard-layout">
+                {/* Submit Panel */}
+                <div className="request-submit-panel">
+                  <h4 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>Submit New Request</h4>
+                  <form onSubmit={handleRequestSubmit} className="request-form">
+                    <textarea
+                      className="request-textarea"
+                      placeholder="Describe your design updates or new functional ideas..."
+                      value={requestContent}
+                      onChange={(e) => setRequestContent(e.target.value)}
+                      disabled={isSubmittingRequest}
+                      required
+                    />
+                    <button
+                      type="submit"
+                      disabled={isSubmittingRequest || !requestContent.trim()}
+                      className="request-submit-btn"
+                    >
+                      {isSubmittingRequest ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle size={16} />
+                          Submit Request
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Submitted Requests List Panel */}
+                <div className="request-list-panel">
+                  <h4 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem' }}>Submitted Requests</h4>
+                  
+                  {requests.length === 0 ? (
+                    <div className="request-list-empty">
+                      No requests submitted yet.
+                    </div>
                   ) : (
-                    <>
-                      <CheckCircle size={16} />
-                      Submit Request
-                    </>
+                    <div className="request-list-container">
+                      {requests.map(req => (
+                        <div key={req.id} className={`request-item-card ${req.completed ? 'completed' : ''}`}>
+                          <div className="request-item-content">
+                            {req.content}
+                          </div>
+                          <div className="request-item-footer">
+                            <span className="request-item-date">
+                              {new Date(req.created_at).toLocaleDateString()}
+                            </span>
+                            <div className="request-item-actions">
+                              {!req.completed && (
+                                <button
+                                  onClick={() => handleCompleteRequest(req.id)}
+                                  className="request-action-btn complete-btn"
+                                  title="Mark as completed"
+                                >
+                                  <CheckCircle size={14} />
+                                  <span>Complete</span>
+                                </button>
+                              )}
+                              {req.completed && (
+                                <span className="completed-badge">
+                                  Completed
+                                </span>
+                              )}
+                              <button
+                                onClick={() => handleDeleteRequest(req.id)}
+                                className="request-action-btn delete-btn"
+                                title="Delete request"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                </button>
-              </form>
+                </div>
+              </div>
             </div>
           </motion.div>
         )}
