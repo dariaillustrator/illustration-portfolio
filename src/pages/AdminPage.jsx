@@ -342,10 +342,17 @@ export default function AdminPage() {
 
           if (trashNeedsCleanup) {
             currentTrash = validTrash;
-            await supabase
-              .from('gallery_items')
-              .update({ src: JSON.stringify(currentTrash) })
-              .eq('title', '__site_trash__');
+            await fetch('/api/admin-action', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+              },
+              body: JSON.stringify({
+                action: 'update_trash_list',
+                payload: { trashList: currentTrash }
+              })
+            });
           }
         } catch (e) {
           console.error("Failed to parse trash items", e);
@@ -404,50 +411,30 @@ export default function AdminPage() {
   const handleSaveChanges = async () => {
     setIsLoadingItems(true);
     try {
-      // 1. Update the settings row
       let hueVal = 0.0;
       if (sortingMode === 'chromatic_desc') hueVal = 1.0;
       else if (sortingMode === 'manual') hueVal = 2.0;
 
-      const { error: settingsError } = await supabase
-        .from('gallery_items')
-        .upsert({
-          id: '00000000-0000-0000-0000-000000000000',
-          src: 'settings',
-          title: '__site_settings__',
-          aspect_ratio: 0,
-          hue: hueVal,
-          saturation: 0,
-          lightness: 0
-        });
-
-      if (settingsError) throw settingsError;
-
-      // 2. Update all active items (is_parked = false, custom_order if manual)
-      const activePromises = activeItems.map((item, index) => {
-        return supabase
-          .from('gallery_items')
-          .update({
-            is_parked: false,
-            custom_order: sortingMode === 'manual' ? index + 1 : null
-          })
-          .eq('id', item.id);
+      const response = await fetch('/api/admin-action', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          action: 'save_order',
+          payload: {
+            sortingModeVal: hueVal,
+            activeItems,
+            parkedItems
+          }
+        })
       });
 
-      // 3. Update all parked items (is_parked = true, custom_order = null)
-      const parkedPromises = parkedItems.map(item => {
-        return supabase
-          .from('gallery_items')
-          .update({
-            is_parked: true,
-            custom_order: null
-          })
-          .eq('id', item.id);
-      });
-
-      const results = await Promise.all([...activePromises, ...parkedPromises]);
-      const error = results.find(r => r.error);
-      if (error) throw error.error;
+      if (!response.ok) {
+        const resData = await response.json();
+        throw new Error(resData.error || 'Failed to save changes.');
+      }
 
       await loadGalleryItems();
       setUploadSuccess(true);
@@ -492,15 +479,23 @@ export default function AdminPage() {
 
   const handleCompleteRequest = async (id) => {
     try {
-      const { error } = await supabase
-        .from('feature_requests')
-        .update({
-          completed: true,
-          completed_at: new Date().toISOString()
+      const response = await fetch('/api/admin-action', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          action: 'complete_request',
+          payload: { requestId: id }
         })
-        .eq('id', id);
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const resData = await response.json();
+        throw new Error(resData.error || 'Failed to complete request.');
+      }
+
       await loadRequests();
     } catch (err) {
       console.error("Failed to complete request:", err.message);
@@ -511,12 +506,23 @@ export default function AdminPage() {
   const handleDeleteRequest = async (id) => {
     if (!window.confirm("Are you sure you want to delete this request?")) return;
     try {
-      const { error } = await supabase
-        .from('feature_requests')
-        .delete()
-        .eq('id', id);
+      const response = await fetch('/api/admin-action', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          action: 'delete_request',
+          payload: { requestId: id }
+        })
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const resData = await response.json();
+        throw new Error(resData.error || 'Failed to delete request.');
+      }
+
       await loadRequests();
     } catch (err) {
       console.error("Failed to delete request:", err.message);
@@ -532,11 +538,22 @@ export default function AdminPage() {
     setErrorMsg('');
 
     try {
-      const { error } = await supabase
-        .from('feature_requests')
-        .insert({ content: requestContent.trim() });
+      const response = await fetch('/api/admin-action', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          action: 'submit_request',
+          payload: { content: requestContent.trim() }
+        })
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const resData = await response.json();
+        throw new Error(resData.error || 'Failed to submit request.');
+      }
 
       setRequestContent('');
       setUploadSuccess(true);
@@ -790,71 +807,64 @@ export default function AdminPage() {
     if (!window.confirm("Are you sure you want to move this artwork to the Trash? It will be removed from the public website but can be restored for 30 days.")) return;
 
     try {
-      // 1. Delete from gallery_items
-      const { error: delError } = await supabase
-        .from('gallery_items')
-        .delete()
-        .eq('id', item.id);
-      
-      if (delError) throw delError;
+      const response = await fetch('/api/admin-action', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          action: 'move_to_trash',
+          payload: { itemId: item.id, trashItems: trashItems }
+        })
+      });
 
-      // 2. Add to __site_trash__
-      const trashedItem = { ...item, deleted_at: new Date().toISOString() };
-      const newTrash = [...trashItems, trashedItem];
-      
-      // Update or insert __site_trash__
-      const { data: existingTrash } = await supabase
-        .from('gallery_items')
-        .select('id')
-        .eq('title', '__site_trash__');
-
-      if (existingTrash && existingTrash.length > 0) {
-        await supabase
-          .from('gallery_items')
-          .update({ src: JSON.stringify(newTrash) })
-          .eq('title', '__site_trash__');
-      } else {
-        await supabase
-          .from('gallery_items')
-          .insert([{
-            title: '__site_trash__',
-            src: JSON.stringify(newTrash),
-            is_parked: true
-          }]);
+      if (!response.ok) {
+        const resData = await response.json();
+        throw new Error(resData.error || 'Failed to move to trash.');
       }
 
-      loadGalleryItems();
+      await loadGalleryItems();
     } catch (err) {
       console.error(err);
       alert(`Failed to delete item: ${err.message}`);
     }
   };
 
-  const handleRestore = async (item) => {
+  const handleRestore = async (item, shouldPark = false) => {
     try {
-      // 1. Insert back to gallery_items
       const { deleted_at, ...originalItem } = item;
-      const { error: insertError } = await supabase
-        .from('gallery_items')
-        .insert([originalItem]);
-        
-      if (insertError) throw insertError;
+      const restoredItem = {
+        ...originalItem,
+        is_parked: shouldPark,
+        custom_order: null
+      };
 
-      // 2. Remove from __site_trash__
-      const newTrash = trashItems.filter(t => t.id !== item.id);
-      await supabase
-        .from('gallery_items')
-        .update({ src: JSON.stringify(newTrash) })
-        .eq('title', '__site_trash__');
+      const response = await fetch('/api/admin-action', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          action: 'restore_from_trash',
+          payload: { item: restoredItem }
+        })
+      });
 
-      loadGalleryItems();
+      if (!response.ok) {
+        const resData = await response.json();
+        throw new Error(resData.error || 'Failed to restore.');
+      }
+
+      await loadGalleryItems();
     } catch (err) {
       console.error(err);
       alert(`Failed to restore item: ${err.message}`);
     }
   };
 
-  const handleDownloadOriginal = (item) => {
+  const handleDownloadOriginal = async (item) => {
     if (!item || !item.src) return;
     try {
       const urlObj = new URL(item.src);
@@ -870,18 +880,35 @@ export default function AdminPage() {
       const baseName = filename.split('.')[0];
       const originalFilename = `original_${baseName}.${originalExt}`;
       const originalUrl = `${baseUrl}/${originalFilename}`;
+
+      const isDashboardUpload = /^\d+_[a-z0-9]+/.test(filename);
+
+      let downloadUrl = item.src;
+      let downloadName = filename;
+
+      if (isDashboardUpload) {
+        try {
+          const res = await fetch(originalUrl, { method: 'HEAD' });
+          if (res.ok) {
+            downloadUrl = originalUrl;
+            downloadName = originalFilename;
+          }
+        } catch (err) {
+          console.warn("Could not verify original image existence, falling back to optimized", err);
+        }
+      }
       
       // Trigger download
       const link = document.createElement('a');
-      link.href = originalUrl;
-      link.download = originalFilename;
+      link.href = downloadUrl;
+      link.download = downloadName;
       link.target = '_blank';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } catch (e) {
       console.error("Failed to trigger download", e);
-      alert("Could not download the original image.");
+      alert("Could not download the image.");
     }
   };
 
@@ -2808,12 +2835,18 @@ export default function AdminPage() {
                             style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(100%)' }}
                           />
                         </div>
-                        <div style={{ position: 'absolute', top: '0', left: '0', right: '0', bottom: '0', background: 'rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.2s', ':hover': { opacity: 1 } }} onMouseEnter={(e) => e.currentTarget.style.opacity = 1} onMouseLeave={(e) => e.currentTarget.style.opacity = 0}>
+                        <div style={{ position: 'absolute', top: '0', left: '0', right: '0', bottom: '0', background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem', padding: '0.5rem', opacity: 0, transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = 1} onMouseLeave={(e) => e.currentTarget.style.opacity = 0}>
                           <button 
-                            onClick={() => handleRestore(item)}
-                            style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)', padding: '0.5rem 1rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
+                            onClick={() => handleRestore(item, false)}
+                            style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)', padding: '0.4rem 0.8rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, width: '100%', maxWidth: '120px', textAlign: 'center' }}
                           >
-                            Restore
+                            Restore & Pub
+                          </button>
+                          <button 
+                            onClick={() => handleRestore(item, true)}
+                            style={{ background: 'transparent', color: '#ffffff', padding: '0.4rem 0.8rem', borderRadius: '4px', border: '1px solid #ffffff', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, width: '100%', maxWidth: '120px', textAlign: 'center' }}
+                          >
+                            Restore Parked
                           </button>
                         </div>
                         <div style={{ position: 'absolute', bottom: '0', left: '0', right: '0', background: 'var(--bg-primary)', padding: '0.4rem', fontSize: '0.7rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
