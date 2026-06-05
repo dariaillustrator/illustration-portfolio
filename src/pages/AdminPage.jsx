@@ -981,7 +981,7 @@ export default function AdminPage() {
       // Fetch blob and trigger real download (works cross-origin and on all devices)
       showToast('Starting download...', 'info', 2000);
       try {
-        const response = await fetch(downloadUrl);
+        const response = await fetch(`${downloadUrl}?cache-bust=${Date.now()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const blob = await response.blob();
         saveAs(blob, downloadName);
@@ -1024,7 +1024,7 @@ export default function AdminPage() {
       for (const file of files) {
         try {
           setPortfolioDownloadProgress(`Downloading ${downloaded + 1}/${files.length}: ${file.key}`);
-          const res = await fetch(file.url);
+          const res = await fetch(`${file.url}?cache-bust=${Date.now()}`);
           if (res.ok) {
             const blob = await res.blob();
             zip.file(file.key, blob);
