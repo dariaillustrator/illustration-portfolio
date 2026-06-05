@@ -4,6 +4,14 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
+function isNew(createdAt) {
+  if (!createdAt) return false;
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffHours = (now - created) / (1000 * 60 * 60);
+  return diffHours < 24;
+}
+
 // Artworks sorted by color analysis (Hue-based) with their aspect ratios
 const galleryFiles = [
   { src: "photo-output_1.JPG", aspectRatio: 0.927734375 },
@@ -70,7 +78,7 @@ export default function Gallery() {
   const [displayIdx, setDisplayIdx] = useState(null);
   const [imageOpacity, setImageOpacity] = useState(1);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
-  const [isColorInverted, setIsColorInverted] = useState(false);
+  const [sortingMode, setSortingMode] = useState('chromatic_asc'); // 'chromatic_asc', 'chromatic_desc', 'manual'
   const location = useLocation();
   const skipDelay = location.state?.skipIntroDelay;
 
@@ -80,30 +88,29 @@ export default function Gallery() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const sortArtworks = (list, isInverted = false) => {
-    return [...list].sort((a, b) => {
-      // 1. Sort by custom_order first if present
-      const orderA = a.custom_order;
-      const orderB = b.custom_order;
-      
-      if (orderA !== null && orderA !== undefined && orderB !== null && orderB !== undefined) {
-        return orderA - orderB;
-      }
-      if (orderA !== null && orderA !== undefined) return -1;
-      if (orderB !== null && orderB !== undefined) return 1;
-
-      // 2. Fallback to chromatic sort
-      const hA = a.hue ?? 0;
-      const hB = b.hue ?? 0;
-      const sA = a.saturation ?? 0;
-      const sB = b.saturation ?? 0;
-      const lA = a.lightness ?? 0;
-      const lB = b.lightness ?? 0;
-      
-      if (hA !== hB) return isInverted ? hB - hA : hA - hB;
-      if (sA !== sB) return isInverted ? sB - sA : sA - sB;
-      return isInverted ? lB - lA : lA - lB;
-    });
+  const sortArtworks = (list, mode) => {
+    if (mode === 'manual') {
+      return [...list].sort((a, b) => {
+        const orderA = a.custom_order ?? 999999;
+        const orderB = b.custom_order ?? 999999;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.hue ?? 0) - (b.hue ?? 0);
+      });
+    } else {
+      const isInverted = mode === 'chromatic_desc';
+      return [...list].sort((a, b) => {
+        const hA = a.hue ?? 0;
+        const hB = b.hue ?? 0;
+        const sA = a.saturation ?? 0;
+        const sB = b.saturation ?? 0;
+        const lA = a.lightness ?? 0;
+        const lB = b.lightness ?? 0;
+        
+        if (hA !== hB) return isInverted ? hB - hA : hA - hB;
+        if (sA !== sB) return isInverted ? sB - sA : sA - sB;
+        return isInverted ? lB - lA : lA - lB;
+      });
+    }
   };
 
   useEffect(() => {
@@ -120,8 +127,12 @@ export default function Gallery() {
         if (data && data.length > 0 && isMounted) {
           // Filter out site settings row
           const settingsItem = data.find(item => item.title === '__site_settings__');
-          const inverted = settingsItem ? settingsItem.hue === 1.0 : false;
-          setIsColorInverted(inverted);
+          let mode = 'chromatic_asc';
+          if (settingsItem) {
+            if (settingsItem.hue === 1.0) mode = 'chromatic_desc';
+            else if (settingsItem.hue === 2.0) mode = 'manual';
+          }
+          setSortingMode(mode);
 
           const filteredData = data.filter(item => item.title !== '__site_settings__');
 
@@ -137,9 +148,10 @@ export default function Gallery() {
             hue: item.hue,
             saturation: item.saturation,
             lightness: item.lightness,
-            custom_order: item.custom_order
+            custom_order: item.custom_order,
+            created_at: item.created_at
           }));
-          setArtworks(sortArtworks(loaded, inverted));
+          setArtworks(sortArtworks(loaded, mode));
         }
       } catch (err) {
         console.warn("Failed to load artworks from Supabase database. Falling back to static local assets:", err.message);
@@ -156,9 +168,11 @@ export default function Gallery() {
         
         // Handle settings update
         if (payload.new && payload.new.title === '__site_settings__') {
-          const inverted = payload.new.hue === 1.0;
-          setIsColorInverted(inverted);
-          setArtworks((prev) => sortArtworks(prev, inverted));
+          let mode = 'chromatic_asc';
+          if (payload.new.hue === 1.0) mode = 'chromatic_desc';
+          else if (payload.new.hue === 2.0) mode = 'manual';
+          setSortingMode(mode);
+          setArtworks((prev) => sortArtworks(prev, mode));
           return;
         }
 
@@ -178,11 +192,12 @@ export default function Gallery() {
             hue: payload.new.hue,
             saturation: payload.new.saturation,
             lightness: payload.new.lightness,
-            custom_order: payload.new.custom_order
+            custom_order: payload.new.custom_order,
+            created_at: payload.new.created_at
           };
           setArtworks((prev) => {
             if (prev.some(item => item.id === newItem.id)) return prev;
-            return sortArtworks([...prev, newItem], isColorInverted);
+            return sortArtworks([...prev, newItem], sortingMode);
           });
         } else if (payload.eventType === 'DELETE') {
           setArtworks((prev) => prev.filter(item => item.id !== payload.old.id));
@@ -201,12 +216,13 @@ export default function Gallery() {
                   hue: payload.new.hue,
                   saturation: payload.new.saturation,
                   lightness: payload.new.lightness,
-                  custom_order: payload.new.custom_order
+                  custom_order: payload.new.custom_order,
+                  created_at: payload.new.created_at
                 };
               }
               return item;
             });
-            return sortArtworks(updated, isColorInverted);
+            return sortArtworks(updated, sortingMode);
           });
         }
       })
@@ -216,7 +232,7 @@ export default function Gallery() {
       isMounted = false;
       supabase.removeChannel(channel);
     };
-  }, [isColorInverted]);
+  }, [sortingMode]);
 
   useEffect(() => {
     // Preload and decode all gallery images during intro to prevent scroll jank
@@ -440,6 +456,36 @@ export default function Gallery() {
           }
           .masonry-col { gap: 0.8rem; }
         }
+
+        /* 24h New Badge Styles */
+        .new-badge {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          font-family: var(--font-main);
+          font-size: 0.65rem;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          padding: 0.2rem 0.5rem;
+          border-radius: 20px;
+          border: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          gap: 0.3rem;
+          z-index: 4;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+
+        .new-dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: #10b981;
+          box-shadow: 0 0 8px #10b981;
+        }
       `}</style>
 
       <motion.div 
@@ -469,6 +515,12 @@ export default function Gallery() {
                   }}
                 >
                   <div className="gallery-item">
+                    {isNew(art.created_at) && (
+                      <div className="new-badge">
+                        <span className="new-dot"></span>
+                        New
+                      </div>
+                    )}
                     <motion.img 
                       src={art.imgUrl}
                       alt={art.title}

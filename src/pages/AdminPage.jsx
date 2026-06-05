@@ -154,6 +154,14 @@ async function optimizeImage(file, maxDimension = 1600, quality = 0.85) {
   });
 }
 
+function isNew(createdAt) {
+  if (!createdAt) return false;
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffHours = (now - created) / (1000 * 60 * 60);
+  return diffHours < 24;
+}
+
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passcode, setPasscode] = useState('');
@@ -172,7 +180,9 @@ export default function AdminPage() {
   // Gallery items states
   const [galleryItems, setGalleryItems] = useState([]);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
-  const [isColorInverted, setIsColorInverted] = useState(false);
+  const [sortingMode, setSortingMode] = useState('chromatic_asc'); // 'chromatic_asc', 'chromatic_desc', 'manual'
+  const [isDirty, setIsDirty] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [copiedColor, setCopiedColor] = useState('');
 
   const fileInputRef = useRef(null);
@@ -186,28 +196,29 @@ export default function AdminPage() {
     }
   }, []);
 
-  const sortArtworks = (list, isInverted = false) => {
-    return [...list].sort((a, b) => {
-      const orderA = a.custom_order;
-      const orderB = b.custom_order;
-      
-      if (orderA !== null && orderA !== undefined && orderB !== null && orderB !== undefined) {
-        return orderA - orderB;
-      }
-      if (orderA !== null && orderA !== undefined) return -1;
-      if (orderB !== null && orderB !== undefined) return 1;
-
-      const hA = a.hue ?? 0;
-      const hB = b.hue ?? 0;
-      const sA = a.saturation ?? 0;
-      const sB = b.saturation ?? 0;
-      const lA = a.lightness ?? 0;
-      const lB = b.lightness ?? 0;
-      
-      if (hA !== hB) return isInverted ? hB - hA : hA - hB;
-      if (sA !== sB) return isInverted ? sB - sA : sA - sB;
-      return isInverted ? lB - lA : lA - lB;
-    });
+  const sortArtworks = (list, mode) => {
+    if (mode === 'manual') {
+      return [...list].sort((a, b) => {
+        const orderA = a.custom_order ?? 999999;
+        const orderB = b.custom_order ?? 999999;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.hue ?? 0) - (b.hue ?? 0);
+      });
+    } else {
+      const isInverted = mode === 'chromatic_desc';
+      return [...list].sort((a, b) => {
+        const hA = a.hue ?? 0;
+        const hB = b.hue ?? 0;
+        const sA = a.saturation ?? 0;
+        const sB = b.saturation ?? 0;
+        const lA = a.lightness ?? 0;
+        const lB = b.lightness ?? 0;
+        
+        if (hA !== hB) return isInverted ? hB - hA : hA - hB;
+        if (sA !== sB) return isInverted ? sB - sA : sA - sB;
+        return isInverted ? lB - lA : lA - lB;
+      });
+    }
   };
 
   const loadGalleryItems = async () => {
@@ -221,12 +232,17 @@ export default function AdminPage() {
 
       // Extract settings row
       const settingsItem = data.find(item => item.title === '__site_settings__');
-      const inverted = settingsItem ? settingsItem.hue === 1.0 : false;
-      setIsColorInverted(inverted);
+      let mode = 'chromatic_asc';
+      if (settingsItem) {
+        if (settingsItem.hue === 1.0) mode = 'chromatic_desc';
+        else if (settingsItem.hue === 2.0) mode = 'manual';
+      }
+      setSortingMode(mode);
 
       // Filter out settings row
       const filtered = (data || []).filter(item => item.title !== '__site_settings__');
-      setGalleryItems(sortArtworks(filtered, inverted));
+      setGalleryItems(sortArtworks(filtered, mode));
+      setIsDirty(false);
     } catch (err) {
       console.error("Error loading gallery items:", err.message);
     } finally {
@@ -234,30 +250,7 @@ export default function AdminPage() {
     }
   };
 
-  const saveNewOrder = async (orderedItems) => {
-    setIsLoadingItems(true);
-    try {
-      const promises = orderedItems.map((item, index) => {
-        return supabase
-          .from('gallery_items')
-          .update({ custom_order: index + 1 })
-          .eq('id', item.id);
-      });
-      
-      const results = await Promise.all(promises);
-      const error = results.find(r => r.error);
-      if (error) throw error.error;
-      
-      await loadGalleryItems();
-    } catch (err) {
-      console.error("Failed to save custom order:", err.message);
-      setErrorMsg(`Failed to save custom order: ${err.message}`);
-    } finally {
-      setIsLoadingItems(false);
-    }
-  };
-
-  const handleMove = async (index, direction) => {
+  const handleMove = (index, direction) => {
     const newItems = [...galleryItems];
     const targetIndex = direction === 'left' ? index - 1 : index + 1;
     
@@ -268,22 +261,39 @@ export default function AdminPage() {
     newItems[targetIndex] = temp;
     
     setGalleryItems(newItems);
-    await saveNewOrder(newItems);
+    setSortingMode('manual');
+    setIsDirty(true);
   };
 
-  const handleResetOrder = async () => {
-    if (!window.confirm("Are you sure you want to reset all manual positions and restore automatic color sorting?")) return;
+  const triggerResetOrder = () => {
+    setShowResetConfirm(true);
+  };
+
+  const handleConfirmReset = () => {
+    setShowResetConfirm(false);
+    
+    // Reset manual positioning locally to chromatic order
+    const sorted = sortArtworks(galleryItems, 'chromatic_asc');
+    setGalleryItems(sorted);
+    setSortingMode('chromatic_asc');
+    setIsDirty(true);
+  };
+
+  const handleInvertChromaticOrder = () => {
+    const nextMode = sortingMode === 'chromatic_desc' ? 'chromatic_asc' : 'chromatic_desc';
+    setSortingMode(nextMode);
+    setGalleryItems(prev => sortArtworks(prev, nextMode));
+    setIsDirty(true);
+  };
+
+  const handleSaveChanges = async () => {
     setIsLoadingItems(true);
     try {
-      // Reset custom_order for all items
-      const { error: resetError } = await supabase
-        .from('gallery_items')
-        .update({ custom_order: null })
-        .neq('title', '__site_settings__');
-      
-      if (resetError) throw resetError;
+      // 1. Update the settings row
+      let hueVal = 0.0;
+      if (sortingMode === 'chromatic_desc') hueVal = 1.0;
+      else if (sortingMode === 'manual') hueVal = 2.0;
 
-      // Also reset inversion settings back to false
       const { error: settingsError } = await supabase
         .from('gallery_items')
         .upsert({
@@ -291,44 +301,39 @@ export default function AdminPage() {
           src: 'settings',
           title: '__site_settings__',
           aspect_ratio: 0,
-          hue: 0.0,
+          hue: hueVal,
           saturation: 0,
           lightness: 0
         });
-      
+
       if (settingsError) throw settingsError;
 
-      await loadGalleryItems();
-    } catch (err) {
-      console.error("Failed to reset order:", err.message);
-      setErrorMsg(`Failed to reset order: ${err.message}`);
-    } finally {
-      setIsLoadingItems(false);
-    }
-  };
-
-  const handleInvertChromaticOrder = async () => {
-    setIsLoadingItems(true);
-    try {
-      const nextInvertedValue = isColorInverted ? 0.0 : 1.0;
-      
-      const { error } = await supabase
-        .from('gallery_items')
-        .upsert({
-          id: '00000000-0000-0000-0000-000000000000',
-          src: 'settings',
-          title: '__site_settings__',
-          aspect_ratio: 0,
-          hue: nextInvertedValue,
-          saturation: 0,
-          lightness: 0
+      // 2. Update item custom_orders
+      if (sortingMode === 'manual') {
+        const promises = galleryItems.map((item, index) => {
+          return supabase
+            .from('gallery_items')
+            .update({ custom_order: index + 1 })
+            .eq('id', item.id);
         });
+        const results = await Promise.all(promises);
+        const error = results.find(r => r.error);
+        if (error) throw error.error;
+      } else {
+        // Reset custom_order to null for all artworks
+        const { error: resetError } = await supabase
+          .from('gallery_items')
+          .update({ custom_order: null })
+          .neq('title', '__site_settings__');
+        if (resetError) throw resetError;
+      }
 
-      if (error) throw error;
       await loadGalleryItems();
+      setUploadSuccess(true);
+      setTimeout(() => setUploadSuccess(false), 3000);
     } catch (err) {
-      console.error("Failed to invert order:", err.message);
-      setErrorMsg(`Failed to invert order: ${err.message}`);
+      console.error("Failed to save changes:", err.message);
+      setErrorMsg(`Failed to save changes: ${err.message}`);
     } finally {
       setIsLoadingItems(false);
     }
@@ -716,7 +721,7 @@ export default function AdminPage() {
 
         .dash-title {
           font-size: 2.2rem;
-          font-family: var(--font-editorial);
+          font-family: var(--font-main);
           font-weight: normal;
           color: var(--text-primary);
           display: flex;
@@ -958,7 +963,7 @@ export default function AdminPage() {
 
         .section-header {
           font-size: 1.5rem;
-          font-family: var(--font-editorial);
+          font-family: var(--font-main);
           font-weight: normal;
           color: var(--text-primary);
           display: flex;
@@ -968,8 +973,140 @@ export default function AdminPage() {
 
         .admin-gallery-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+          grid-template-columns: repeat(3, 1fr);
           gap: 1.5rem;
+        }
+
+        @media (max-width: 900px) {
+          .admin-gallery-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 600px) {
+          .admin-gallery-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        /* 24h New Badge Styles */
+        .new-badge {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          font-family: var(--font-main);
+          font-size: 0.65rem;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          padding: 0.2rem 0.5rem;
+          border-radius: 20px;
+          border: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          gap: 0.3rem;
+          z-index: 4;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+
+        .new-dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: #10b981;
+          box-shadow: 0 0 8px #10b981;
+        }
+
+        /* Custom Confirmation Modal */
+        .confirm-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(10px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10000;
+        }
+
+        .confirm-modal-card {
+          width: 90%;
+          max-width: 420px;
+          background: var(--glass-bg);
+          border: 1px solid var(--glass-border);
+          border-radius: var(--radius-lg);
+          padding: 2.2rem;
+          text-align: center;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+          color: var(--text-primary);
+          font-family: var(--font-main);
+        }
+
+        .confirm-modal-icon-wrapper {
+          width: 50px;
+          height: 50px;
+          border-radius: 50%;
+          background: rgba(239, 68, 68, 0.1);
+          color: #ef4444;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 1.5rem auto;
+        }
+
+        .confirm-modal-title {
+          font-size: 1.3rem;
+          font-weight: 700;
+          margin-bottom: 0.8rem;
+        }
+
+        .confirm-modal-desc {
+          font-size: 0.9rem;
+          color: var(--text-secondary);
+          line-height: 1.5;
+          margin-bottom: 2rem;
+        }
+
+        .confirm-modal-actions {
+          display: flex;
+          gap: 1rem;
+          justify-content: center;
+        }
+
+        .btn-confirm {
+          padding: 0.7rem 1.4rem;
+          font-size: 0.85rem;
+          font-weight: 600;
+          border-radius: var(--radius-md);
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .btn-confirm.danger {
+          background: #ef4444;
+          color: #ffffff;
+        }
+
+        .btn-confirm.danger:hover {
+          background: #dc2626;
+          transform: translateY(-2px);
+        }
+
+        .btn-confirm.cancel {
+          background: rgba(var(--text-primary-rgb), 0.05);
+          color: var(--text-primary);
+          border: 1px solid var(--border);
+        }
+
+        .btn-confirm.cancel:hover {
+          background: rgba(var(--text-primary-rgb), 0.1);
+          transform: translateY(-2px);
         }
 
         .admin-item-card {
@@ -1445,7 +1582,7 @@ export default function AdminPage() {
                 </h3>
                 <div className="order-actions-row">
                   <button 
-                    onClick={handleResetOrder} 
+                    onClick={triggerResetOrder} 
                     className="btn-action-order"
                   >
                     <RefreshCw size={14} />
@@ -1453,11 +1590,23 @@ export default function AdminPage() {
                   </button>
                   <button 
                     onClick={handleInvertChromaticOrder} 
-                    className={`btn-action-order ${isColorInverted ? 'active-toggle' : ''}`}
+                    className={`btn-action-order ${sortingMode === 'chromatic_desc' ? 'active-toggle' : ''}`}
                   >
-                    <Sliders style={{ transform: isColorInverted ? 'rotate(0deg)' : 'rotate(180deg)' }} size={14} />
-                    {isColorInverted ? 'Inverted Color Sorting' : 'Invert Color Sorting'}
+                    <Sliders style={{ transform: sortingMode === 'chromatic_desc' ? 'rotate(0deg)' : 'rotate(180deg)' }} size={14} />
+                    {sortingMode === 'chromatic_desc' ? 'Inverted Color Sorting' : 'Invert Color Sorting'}
                   </button>
+
+                  {isDirty && (
+                    <motion.button 
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      onClick={handleSaveChanges}
+                      className="btn-action-order save-changes-btn"
+                    >
+                      <CheckCircle size={14} />
+                      Save New Order
+                    </motion.button>
+                  )}
                 </div>
               </div>
 
@@ -1471,6 +1620,12 @@ export default function AdminPage() {
                 <div className="admin-gallery-grid">
                   {galleryItems.map((item, index) => (
                     <div key={item.id} className="admin-item-card">
+                      {isNew(item.created_at) && (
+                        <div className="new-badge">
+                          <span className="new-dot"></span>
+                          New
+                        </div>
+                      )}
                       <button 
                         onClick={() => handleDelete(item.id, item.src)}
                         className="delete-overlay-btn"
@@ -1556,6 +1711,36 @@ export default function AdminPage() {
             <CheckCircle size={16} />
             <span>Copied {copiedColor} to clipboard!</span>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Reset Confirm Modal */}
+      <AnimatePresence>
+        {showResetConfirm && (
+          <div className="confirm-modal-overlay">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="confirm-modal-card"
+            >
+              <div className="confirm-modal-icon-wrapper">
+                <RefreshCw size={24} />
+              </div>
+              <h4 className="confirm-modal-title">Reset Color Order?</h4>
+              <p className="confirm-modal-desc">
+                Are you sure? This action will reset eventual manual positioning that you already applied.
+              </p>
+              <div className="confirm-modal-actions">
+                <button onClick={handleConfirmReset} className="btn-confirm danger">
+                  Confirm Reset
+                </button>
+                <button onClick={() => setShowResetConfirm(false)} className="btn-confirm cancel">
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

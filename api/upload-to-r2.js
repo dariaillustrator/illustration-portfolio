@@ -67,16 +67,48 @@ export default async function handler(req, res) {
     const fileUrl = `${cleanBase}/${cleanFilename}`;
 
     // 4. Save to Supabase
-    console.log(`Saving ${title} metadata to Supabase...`);
+    console.log(`Checking sorting mode...`);
+    const { data: settingsData } = await supabase
+      .from('gallery_items')
+      .select('hue')
+      .eq('title', '__site_settings__')
+      .maybeSingle();
+
+    const isManualMode = settingsData && settingsData.hue === 2.0;
+    let nextOrder = null;
+
+    if (isManualMode) {
+      console.log("Manual mode is active. Shifting existing items...");
+      const { data: items, error: fetchError } = await supabase
+        .from('gallery_items')
+        .select('id, custom_order')
+        .neq('title', '__site_settings__');
+        
+      if (!fetchError && items) {
+        // Shift custom_orders by 1
+        const updates = items.map(item => {
+          const currentOrder = item.custom_order ?? 1;
+          return supabase
+            .from('gallery_items')
+            .update({ custom_order: currentOrder + 1 })
+            .eq('id', item.id);
+        });
+        await Promise.all(updates);
+      }
+      nextOrder = 1;
+    }
+
+    console.log(`Saving ${title} metadata to Supabase (order: ${nextOrder})...`);
     const { data: dbData, error: dbError } = await supabase
       .from('gallery_items')
       .insert({
         src: fileUrl,
-        title: title || 'Senza Titolo',
+        title: title || 'Untitled',
         aspect_ratio: parseFloat(aspect_ratio),
         hue: parseFloat(hue),
         saturation: parseFloat(saturation),
-        lightness: parseFloat(lightness)
+        lightness: parseFloat(lightness),
+        custom_order: nextOrder
       })
       .select();
 
