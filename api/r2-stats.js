@@ -57,8 +57,8 @@ export default async function handler(req, res) {
         throw new Error('Cloudflare API returned success=false');
       }
 
-      if (data.result && data.result.objects) {
-        data.result.objects.forEach(obj => {
+      if (data.result && Array.isArray(data.result)) {
+        data.result.forEach(obj => {
           totalSize += obj.size;
         });
       }

@@ -67,30 +67,47 @@ export default async function handler(req, res) {
     const isR2Url = src.includes('r2.dev') || src.includes(accountId);
 
     if (isR2Url) {
-      const urlParts = src.split('/');
-      const filename = urlParts[urlParts.length - 1];
-      
-      const r2Url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucketName}/objects/${filename}`;
-      console.log(`Deleting ${filename} from Cloudflare R2...`);
-      
-      const r2Res = await fetch(r2Url, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${apiToken}`
-        }
-      });
+      // Parse the URL to get the clean pathname and query parameters
+      const parsedUrl = new URL(src);
+      const pathnameParts = parsedUrl.pathname.split('/');
+      const cleanFilename = pathnameParts[pathnameParts.length - 1];
+      const oext = parsedUrl.searchParams.get('oext');
 
-      if (!r2Res.ok) {
-        const errorText = await r2Res.text();
-        console.warn(`Cloudflare R2 delete returned non-ok status: ${r2Res.status} ${errorText}`);
-      } else {
-        const r2Data = await r2Res.json();
-        if (!r2Data.success) {
-          console.warn(`Cloudflare R2 delete returned success=false: ${JSON.stringify(r2Data.errors)}`);
+      // Helper to delete an object from R2
+      const deleteObjectFromR2 = async (targetFilename) => {
+        const r2Url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucketName}/objects/${targetFilename}`;
+        console.log(`Deleting ${targetFilename} from Cloudflare R2...`);
+        const r2Res = await fetch(r2Url, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${apiToken}`
+          }
+        });
+
+        if (!r2Res.ok) {
+          const errorText = await r2Res.text();
+          console.warn(`Cloudflare R2 delete returned non-ok status for ${targetFilename}: ${r2Res.status} ${errorText}`);
+          return false;
         } else {
-          console.log(`Deleted ${filename} from Cloudflare R2 successfully.`);
+          const r2Data = await r2Res.json();
+          if (!r2Data.success) {
+            console.warn(`Cloudflare R2 delete returned success=false for ${targetFilename}: ${JSON.stringify(r2Data.errors)}`);
+            return false;
+          } else {
+            console.log(`Deleted ${targetFilename} from Cloudflare R2 successfully.`);
+            return true;
+          }
         }
-      }
+      };
+
+      // 1. Delete optimized image
+      await deleteObjectFromR2(cleanFilename);
+
+      // 2. Delete original high-quality image if it exists
+      const baseName = cleanFilename.split('.')[0];
+      const originalExt = oext || 'jpg';
+      const originalFilename = `original_${baseName}.${originalExt}`;
+      await deleteObjectFromR2(originalFilename);
     } else {
       console.log(`URL ${src} is not an R2 URL, skipped R2 deletion.`);
     }
