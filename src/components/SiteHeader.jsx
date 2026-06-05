@@ -155,6 +155,7 @@ export default function SiteHeader() {
   const handleGalleryClick = (e) => {
     e.preventDefault();
     setIsServicesOpen(false);
+    setIsMobileMenuOpen(false);
     if (location.pathname !== '/') {
       navigate('/', { state: { skipIntroDelay: true, scrollToGallery: true } });
     } else {
@@ -314,7 +315,7 @@ export default function SiteHeader() {
             style={{ width: '100%', overflow: 'hidden', borderTop: '1px solid var(--glass-border)' }}
           >
             <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-              <Link to="/" onClick={() => setIsMobileMenuOpen(false)} style={{ color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700 }}>Gallery</Link>
+              <a href="/" onClick={handleGalleryClick} style={{ color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700 }}>Gallery</a>
               {windowWidth >= 768 && (
                 <div 
                   onClick={() => setIsServicesOpen(!isServicesOpen)}

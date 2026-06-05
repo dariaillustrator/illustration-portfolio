@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Mail, ArrowUpRight } from 'lucide-react';
 import { useUI } from '../context/UIContext';
 
@@ -42,6 +42,17 @@ export default function SiteFooter() {
   const { toggleFaq, openLegal } = useUI();
   const currentYear = new Date().getFullYear();
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleGalleryClick = () => {
+    if (location.pathname !== '/') {
+      navigate('/', { state: { skipIntroDelay: true, scrollToGallery: true } });
+    } else {
+      const gallery = document.getElementById('gallery');
+      if (gallery) gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   useEffect(() => {
     let resizeTimer;
@@ -59,7 +70,7 @@ export default function SiteFooter() {
 
   const footerLinks = [
     { title: "Navigation", links: [
-      { name: "Gallery", path: "/" },
+      { name: "Gallery", action: handleGalleryClick },
       ...(!isMobile ? [{ name: "Services", path: "/" }] : []),
       { name: "Pricing", path: "/pricing" },
       { name: "About", path: "/about" }
