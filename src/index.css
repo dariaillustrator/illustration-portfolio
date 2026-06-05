@@ -526,6 +526,7 @@ body.dark-theme .scroll-circle {
   width: calc(100vw - 8rem);
   margin-left: calc(-50vw + 50% + 4rem);
   margin-bottom: 2rem; /* Spacing dividing it from footer */
+  padding: 4rem 4rem;
   
   /* Full border radius of 8px */
   border-radius: 8px;
@@ -536,6 +537,7 @@ body.dark-theme .scroll-circle {
     width: calc(100vw - 6rem);
     margin-left: calc(-50vw + 50% + 3rem);
     margin-bottom: 1.5rem;
+    padding: 4rem 3rem;
   }
 }
 @media (max-width: 768px) {
@@ -543,6 +545,7 @@ body.dark-theme .scroll-circle {
     width: calc(100vw - 6rem);
     margin-left: calc(-50vw + 50% + 3rem);
     margin-bottom: 1.5rem;
+    padding: 4rem 2rem;
   }
 }
 
