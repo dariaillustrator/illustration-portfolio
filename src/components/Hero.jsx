@@ -101,6 +101,28 @@ class Comet {
     }
   }
 
+  spawnFirstComet() {
+    this.angle = (25 + Math.random() * 5) * Math.PI / 180;
+    this.speed = 5.0 + Math.random() * 1.0;
+    
+    this.vx = -this.speed * Math.cos(this.angle);
+    this.vy = this.speed * Math.sin(this.angle);
+    
+    this.size = 2.8 + Math.random() * 0.7; // slightly larger than standard size (1.0 to 2.0)
+    this.history = [];
+    this.maxHistory = 75;
+    this.opacity = 0.8 + Math.random() * 0.15;
+    this.delay = 0; // starts immediately
+
+    const spawnY = -50;
+    const targetY = this.height * 0.22;
+    const targetX = this.width * 0.5;
+    const cot = 1 / Math.tan(this.angle);
+    
+    this.x = targetX + (targetY - spawnY) * cot;
+    this.y = spawnY;
+  }
+
   draw(ctx) {
     // Hide comet if it is in delay cooldown
     if (this.delay > 0 || this.history.length < 2) return;
@@ -192,6 +214,8 @@ export default function Hero() {
 
   // Canvas particle logic
   useEffect(() => {
+    if (!isTypingDone) return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -205,8 +229,17 @@ export default function Hero() {
       
       const count = Math.max(2, Math.min(5, Math.floor(window.innerWidth / 300)));
       comets = Array.from({ length: count }, () => new Comet(canvas.width, canvas.height));
-      // Stagger them initially
-      comets.forEach((c) => c.reset(true, comets));
+      
+      // Spawn the first comet immediately, controlled to pass above the headline
+      if (comets.length > 0) {
+        comets[0].spawnFirstComet();
+      }
+      
+      // Spawn other comets with staggered delays
+      for (let i = 1; i < comets.length; i++) {
+        comets[i].reset(false, comets);
+        comets[i].delay = 120 * i + Math.floor(Math.random() * 60); // stagger delays (approx 2, 4, 6 seconds)
+      }
     };
 
     resizeCanvas();
@@ -229,7 +262,7 @@ export default function Hero() {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', resizeCanvas);
     };
-  }, []);
+  }, [isTypingDone]);
 
   return (
     <section className="hero-section">
