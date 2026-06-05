@@ -5,19 +5,24 @@ import { useUI } from '../context/UIContext';
 
 export default function FaqOverlay() {
   const { isFaqOpen, closeFaq } = useUI();
-  const [hoveredIdx, setHoveredIdx] = React.useState(null);
+  const [openIdx, setOpenIdx] = React.useState(null);
 
   React.useEffect(() => {
     if (!isFaqOpen) return;
 
+    // Body scroll lock
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
+
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        closeFaq();
-      }
+      if (e.key === 'Escape') closeFaq();
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalStyle;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isFaqOpen, closeFaq]);
 
   const faqs = [
@@ -84,6 +89,9 @@ export default function FaqOverlay() {
               flexDirection: 'column',
               pointerEvents: 'all'
             }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="faq-title"
           >
             {/* Header */}
             <div style={{ 
@@ -97,10 +105,11 @@ export default function FaqOverlay() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
                 <HelpCircle size={20} style={{ opacity: 0.6 }} />
-                <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, letterSpacing: '0.02em' }}>FAQ & STUDIO POLICIES</h2>
+                <h2 id="faq-title" style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, letterSpacing: '0.02em' }}>FAQ & STUDIO POLICIES</h2>
               </div>
               <button 
                 onClick={closeFaq}
+                aria-label="Close FAQ"
                 style={{
                   background: 'var(--text-primary)',
                   color: 'var(--bg-primary)',
@@ -130,26 +139,30 @@ export default function FaqOverlay() {
               msOverflowStyle: 'none'
             }}>
               {faqs.map((faq, i) => (
-                <div 
+                <button 
                   key={i}
-                  onMouseEnter={() => setHoveredIdx(i)}
-                  onMouseLeave={() => setHoveredIdx(null)}
+                  onClick={() => setOpenIdx(openIdx === i ? null : i)}
+                  aria-expanded={openIdx === i}
                   style={{ 
                     marginBottom: '0.8rem', 
                     padding: '1.2rem',
-                    background: hoveredIdx === i ? 'rgba(255,255,255,0.05)' : 'transparent',
+                    background: openIdx === i ? 'rgba(255,255,255,0.05)' : 'transparent',
                     borderRadius: '8px',
                     transition: 'all 0.3s ease',
-                    cursor: 'default',
+                    cursor: 'pointer',
                     border: '1px solid',
-                    borderColor: hoveredIdx === i ? 'var(--glass-border)' : 'transparent'
+                    borderColor: openIdx === i ? 'var(--glass-border)' : 'transparent',
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    color: 'inherit'
                   }}
                 >
                   <h3 style={{ 
                     fontSize: '0.95rem', 
                     fontWeight: 800, 
-                    marginBottom: hoveredIdx === i ? '0.8rem' : 0, 
-                    opacity: hoveredIdx === i ? 1 : 0.7,
+                    marginBottom: openIdx === i ? '0.8rem' : 0, 
+                    opacity: openIdx === i ? 1 : 0.7,
                     transition: 'all 0.3s ease'
                   }}>
                     {faq.q}
@@ -158,8 +171,8 @@ export default function FaqOverlay() {
                   <motion.div
                     initial={false}
                     animate={{ 
-                      height: hoveredIdx === i ? 'auto' : 0,
-                      opacity: hoveredIdx === i ? 1 : 0
+                      height: openIdx === i ? 'auto' : 0,
+                      opacity: openIdx === i ? 1 : 0
                     }}
                     transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                     style={{ overflow: 'hidden' }}
@@ -168,7 +181,7 @@ export default function FaqOverlay() {
                       {faq.a}
                     </p>
                   </motion.div>
-                </div>
+                </button>
               ))}
 
               <div style={{ 
@@ -180,7 +193,7 @@ export default function FaqOverlay() {
               }}>
                 <p style={{ fontSize: '0.8rem', opacity: 0.5, marginBottom: '0.8rem' }}>Need more specific help?</p>
                 <a 
-                  href="mailto:daria.illustrates@gmail.com" 
+                  href="mailto:dariaillustrates@gmail.com" 
                   style={{ 
                     color: 'var(--text-primary)', 
                     textDecoration: 'none', 

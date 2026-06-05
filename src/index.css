@@ -96,6 +96,151 @@ body.dark-theme {
   --bg-paper: #1c1c1e;
 }
 
+/* Footer Links Accessibility Styles */
+.footer-social-icon {
+  color: var(--text-primary);
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+
+.footer-social-icon:hover,
+.footer-social-icon:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+
+.footer-nav-link:hover,
+.footer-nav-link:focus-visible {
+  transform: translateX(5px);
+  outline: none;
+}
+
+/* NotFoundPage Styles */
+.not-found-container {
+  min-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: var(--font-main);
+  color: var(--text-primary);
+  padding: 2rem;
+  margin-top: 4rem;
+}
+
+.flower-animation-wrapper {
+  width: 250px;
+  height: 250px;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* Minimalist monochrome flower */
+.snowdrop-flower {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.flower-stem {
+  stroke: var(--text-primary);
+  stroke-width: 3;
+  fill: none;
+  stroke-linecap: round;
+  opacity: 0.8;
+  transition: stroke 0.5s ease;
+}
+
+.flower-leaf {
+  fill: var(--text-primary);
+  stroke: none;
+  opacity: 0.5;
+  transition: fill 0.5s ease;
+}
+
+/* Loop Anim for drooping stem/blossom */
+.flower-droop-group {
+  animation: wiltAndRevive 6s ease-in-out infinite;
+  transform-origin: 100px 90px;
+}
+
+.flower-blossom {
+  fill: var(--text-primary);
+  stroke: none;
+  transition: fill 0.5s ease;
+  animation: petalClose 6s ease-in-out infinite;
+  transform-origin: 135px 120px;
+}
+
+.flower-cap {
+  fill: var(--text-primary);
+  stroke: none;
+  opacity: 0.8;
+  transition: fill 0.5s ease;
+}
+
+@keyframes wiltAndRevive {
+  0%, 100% {
+    transform: rotate(0deg) translateY(0px);
+  }
+  50% {
+    transform: rotate(18deg) translateY(6px);
+  }
+}
+
+@keyframes petalClose {
+  0%, 100% {
+    transform: scaleX(1) scaleY(1);
+  }
+  50% {
+    transform: scaleX(0.8) scaleY(1.05);
+  }
+}
+
+.not-found-title {
+  font-family: var(--font-editorial);
+  font-size: 5rem;
+  line-height: 1.1;
+  margin-bottom: 1rem;
+  font-weight: normal;
+}
+
+.not-found-desc {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  max-width: 460px;
+  margin-bottom: 2.5rem;
+  line-height: 1.6;
+}
+
+.back-home-btn {
+  padding: 0.8rem 2rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-block;
+}
+
+.back-home-btn:hover {
+  transform: translateY(-2px);
+  opacity: 0.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flower-droop-group, .flower-blossom {
+    animation: none;
+  }
+}
+
 
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

@@ -5,9 +5,9 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 export default async function handler(req, res) {
   // CORS setup
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', '*'); // Restricted by Auth
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -17,10 +17,28 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Security: Check Authorization Header
+  const authHeader = req.headers.authorization;
+  const apiSecret = process.env.ADMIN_API_SECRET;
+  if (!authHeader || authHeader !== `Bearer ${apiSecret}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // Security: Check Content-Type
+  if (!req.headers['content-type']?.includes('application/json')) {
+    return res.status(400).json({ error: 'Content-Type must be application/json' });
+  }
+
   const { id, src } = req.body;
 
   if (!id || !src) {
     return res.status(400).json({ error: 'Missing required parameters' });
+  }
+
+  // Security: Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) {
+    return res.status(400).json({ error: 'Invalid ID format' });
   }
 
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -81,6 +99,7 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("Handler error:", err);
-    return res.status(500).json({ error: err.message });
+    // Return generic error to client, avoiding internal details leakage
+    return res.status(500).json({ error: 'Internal server error processing deletion' });
   }
 }

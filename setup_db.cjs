@@ -1,6 +1,12 @@
+require('dotenv').config();
 const { Client } = require('pg');
 
-const connectionString = 'postgresql://postgres:DaDa57263_12@db.ahulikwglwlwuuxijqwi.supabase.co:5432/postgres';
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  console.error('Error: DATABASE_URL environment variable is missing.');
+  process.exit(1);
+}
 
 const sql = `
 -- 1. PROFILES TABLE

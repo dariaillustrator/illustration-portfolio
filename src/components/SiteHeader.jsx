@@ -105,7 +105,13 @@ export default function SiteHeader() {
   }, [location.pathname]);
 
   useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
+    let resizeTimer;
+    const handleResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        setWindowWidth(window.innerWidth);
+      }, 150);
+    };
     
     const handleScroll = () => {
       setScrolled(window.scrollY > 50);
@@ -123,13 +129,28 @@ export default function SiteHeader() {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsLightboxOpen(document.body.classList.contains('lightbox-open'));
-    };
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'class') {
+          setIsLightboxOpen(document.body.classList.contains('lightbox-open'));
+        }
+      });
+    });
     
-    const interval = setInterval(handleScroll, 100);
-    return () => clearInterval(interval);
+    observer.observe(document.body, { attributes: true });
+    return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobileMenuOpen]);
 
   const handleGalleryClick = (e) => {
     e.preventDefault();
@@ -193,6 +214,8 @@ export default function SiteHeader() {
           {windowWidth < 1024 && (
             <button 
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label="Toggle mobile menu"
+              aria-expanded={isMobileMenuOpen}
               style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '18px' }}>
@@ -231,6 +254,10 @@ export default function SiteHeader() {
             
             <button 
               onMouseEnter={() => setIsServicesOpen(true)}
+              onClick={() => setIsServicesOpen(!isServicesOpen)}
+              onFocus={() => setIsServicesOpen(true)}
+              aria-haspopup="true"
+              aria-expanded={isServicesOpen}
               style={{ 
                 background: 'transparent', 
                 border: 'none', 
@@ -258,6 +285,7 @@ export default function SiteHeader() {
           <button 
             onClick={toggleTheme}
             className="nav-icon-btn"
+            aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
             style={{ 
               background: 'transparent', border: 'none', color: 'inherit', 
               cursor: 'pointer', display: 'flex', alignItems: 'center',
@@ -271,6 +299,7 @@ export default function SiteHeader() {
           <button 
             onClick={toggleFaq}
             className="nav-icon-link" 
+            aria-label="Frequently Asked Questions"
             onMouseEnter={() => setIsServicesOpen(false)} 
             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', display: 'flex', alignItems: 'center', transition: 'opacity 0.2s' }}
           >

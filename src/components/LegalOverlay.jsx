@@ -9,6 +9,10 @@ export default function LegalOverlay() {
   useEffect(() => {
     if (!legalType) return;
 
+    // Body scroll lock
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
+
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         closeLegal();
@@ -16,7 +20,10 @@ export default function LegalOverlay() {
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalStyle;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [legalType, closeLegal]);
 
   const isOpen = legalType !== null;
@@ -77,6 +84,9 @@ export default function LegalOverlay() {
               flexDirection: 'column',
               pointerEvents: 'all'
             }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="legal-title"
           >
             {/* Header */}
             <div style={{ 
@@ -94,12 +104,13 @@ export default function LegalOverlay() {
                 ) : (
                   <Shield size={20} style={{ opacity: 0.6 }} />
                 )}
-                <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                <h2 id="legal-title" style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
                   {legalType === 'terms' ? 'Terms & Conditions' : 'Privacy Policy'}
                 </h2>
               </div>
               <button 
                 onClick={closeLegal}
+                aria-label="Close Legal Modal"
                 style={{
                   background: 'var(--text-primary)',
                   color: 'var(--bg-primary)',

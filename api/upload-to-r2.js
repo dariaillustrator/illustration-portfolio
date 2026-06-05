@@ -5,9 +5,9 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 export default async function handler(req, res) {
   // CORS setup
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', '*'); // Restricted by Auth
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -17,10 +17,33 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Security: Check Authorization Header
+  const authHeader = req.headers.authorization;
+  const apiSecret = process.env.ADMIN_API_SECRET;
+  if (!authHeader || authHeader !== `Bearer ${apiSecret}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // Security: Check Content-Type
+  if (!req.headers['content-type']?.includes('application/json')) {
+    return res.status(400).json({ error: 'Content-Type must be application/json' });
+  }
+
   const { image, filename, title, aspect_ratio, hue, saturation, lightness, is_parked } = req.body;
 
   if (!image || !filename || aspect_ratio === undefined || hue === undefined || saturation === undefined || lightness === undefined) {
     return res.status(400).json({ error: 'Missing required parameters' });
+  }
+
+  // Security: Prevent path traversal by sanitizing filename
+  if (!/^[a-zA-Z0-9_.-]+$/.test(filename)) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+
+  // Security: Payload size limit (e.g., 5MB)
+  const estimatedSize = (image.length * 3) / 4;
+  if (estimatedSize > 5 * 1024 * 1024) {
+    return res.status(413).json({ error: 'Payload too large (limit 5MB)' });
   }
 
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -41,12 +64,22 @@ export default async function handler(req, res) {
     // 2. Upload to Cloudflare R2 via REST API
     const r2Url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucketName}/objects/${filename}`;
     
+    // Determine Content-Type from extension
+    const ext = filename.split('.').pop().toLowerCase();
+    const mimeTypes = {
+      'png': 'image/png',
+      'webp': 'image/webp',
+      'gif': 'image/gif',
+      'svg': 'image/svg+xml'
+    };
+    const contentType = mimeTypes[ext] || 'image/jpeg';
+
     console.log(`Uploading ${filename} to Cloudflare R2...`);
     const r2Res = await fetch(r2Url, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${apiToken}`,
-        'Content-Type': 'image/jpeg'
+        'Content-Type': contentType
       },
       body: buffer
     });
@@ -122,6 +155,7 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("Handler error:", err);
-    return res.status(500).json({ error: err.message });
+    // Return generic error to client, avoiding internal details leakage
+    return res.status(500).json({ error: 'Internal server error processing upload' });
   }
 }

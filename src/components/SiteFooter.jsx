@@ -44,7 +44,13 @@ export default function SiteFooter() {
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
 
   useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
+    let resizeTimer;
+    const handleResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        setWindowWidth(window.innerWidth);
+      }, 150);
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -75,10 +81,10 @@ export default function SiteFooter() {
             <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', maxWidth: '300px', lineHeight: 1.6, marginBottom: '2rem' }}>
               Visual Storyteller & Printmaker. Supporting narrative worlds through art.
             </p>
-            <div style={{ display: 'flex', gap: '1.5rem' }}>
-              <a href="mailto:dariaillustrates@gmail.com" style={{ color: 'var(--text-primary)', opacity: 0.5, transition: 'opacity 0.3s' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.5} title="Email"><Mail size={20} /></a>
-              <a href="https://www.instagram.com/d.daria_________/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-primary)', opacity: 0.5, transition: 'opacity 0.3s' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.5} title="Instagram"><InstagramIcon size={20} /></a>
-              <a href="https://www.threads.com/@d.daria_________" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-primary)', opacity: 0.5, transition: 'opacity 0.3s' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.5} title="Threads"><ThreadsIcon size={20} /></a>
+            <div className="footer-socials" style={{ display: 'flex', gap: '1.5rem' }}>
+              <a href="mailto:dariaillustrates@gmail.com" className="footer-social-icon" aria-label="Send email" title="Email"><Mail size={20} /></a>
+              <a href="https://www.instagram.com/d.daria_________/" target="_blank" rel="noopener noreferrer" className="footer-social-icon" aria-label="Visit Instagram profile" title="Instagram"><InstagramIcon size={20} /></a>
+              <a href="https://www.threads.com/@d.daria_________" target="_blank" rel="noopener noreferrer" className="footer-social-icon" aria-label="Visit Threads profile" title="Threads"><ThreadsIcon size={20} /></a>
             </div>
           </div>
 
@@ -90,15 +96,14 @@ export default function SiteFooter() {
                 {section.links.map((link, j) => (
                   <li key={j}>
                     {link.path ? (
-                      <Link to={link.path} style={{ color: 'var(--text-primary)', textDecoration: 'none', fontSize: '1rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px', transition: 'transform 0.2s' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateX(5px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateX(0)'}>
+                      <Link to={link.path} className="footer-nav-link" style={{ color: 'var(--text-primary)', textDecoration: 'none', fontSize: '1rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px', transition: 'transform 0.2s' }}>
                         {link.name} <ArrowUpRight size={12} style={{ opacity: 0.3 }} />
                       </Link>
                     ) : (
                       <button 
                         onClick={link.action}
+                        className="footer-nav-link"
                         style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px', transition: 'transform 0.2s' }}
-                        onMouseEnter={e => e.currentTarget.style.transform = 'translateX(5px)'}
-                        onMouseLeave={e => e.currentTarget.style.transform = 'translateX(0)'}
                       >
                         {link.name}
                       </button>

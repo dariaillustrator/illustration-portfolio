@@ -46,6 +46,10 @@ export default function ContactOverlay() {
   useEffect(() => {
     if (!isContactOpen) return;
 
+    // Body scroll lock
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
+
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         closeContact();
@@ -53,7 +57,10 @@ export default function ContactOverlay() {
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalStyle;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isContactOpen, closeContact]);
 
   const copyEmail = (e) => {
@@ -146,6 +153,9 @@ export default function ContactOverlay() {
           flexDirection: 'column',
           pointerEvents: 'all'
         }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="contact-title"
       >
         {/* Header */}
         <div style={{ 
@@ -157,9 +167,10 @@ export default function ContactOverlay() {
           background: 'rgba(255,255,255,0.05)',
           flexShrink: 0
         }}>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, letterSpacing: '0.05em' }}>GET IN TOUCH</h2>
+          <h2 id="contact-title" style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, letterSpacing: '0.05em' }}>GET IN TOUCH</h2>
           <button 
             onClick={closeContact}
+            aria-label="Close Contact Modal"
             style={{
               background: 'var(--text-primary)',
               color: 'var(--bg-primary)',

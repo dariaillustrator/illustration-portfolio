@@ -206,11 +206,22 @@ export default function AdminPage() {
 
   // Check auth session
   useEffect(() => {
-    const isAuthed = sessionStorage.getItem('admin_authenticated');
-    if (isAuthed === 'true') {
+    const isAuth = sessionStorage.getItem('admin_token');
+    if (isAuth) {
       setIsAuthenticated(true);
       loadGalleryItems();
     }
+    // Listen for Escape to drop file
+    const handleGlobalKeyDown = (e) => {
+      if (e.key === 'Escape' && isUploading) {
+        setSelectedFile(null);
+        setPreviewUrl('');
+        setAnalysisMeta(null);
+        setUploadStep('');
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
   const sortArtworks = (list, mode) => {
@@ -529,7 +540,7 @@ export default function AdminPage() {
       if (nextPasscode === '7263') {
         setTimeout(() => {
           setIsAuthenticated(true);
-          sessionStorage.setItem('admin_authenticated', 'true');
+          sessionStorage.setItem('admin_token', nextPasscode);
           loadGalleryItems();
         }, 300);
       } else if (nextPasscode.length === 4) {
@@ -550,8 +561,8 @@ export default function AdminPage() {
   };
 
   const handleLogout = () => {
+    sessionStorage.removeItem('admin_token');
     setIsAuthenticated(false);
-    sessionStorage.removeItem('admin_authenticated');
     setPasscode('');
     setSelectedFile(null);
     setPreviewUrl('');
@@ -631,7 +642,8 @@ export default function AdminPage() {
           const response = await fetch('/api/upload-to-r2', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
             },
             body: JSON.stringify({
               image: base64data,
@@ -711,7 +723,8 @@ export default function AdminPage() {
       const response = await fetch('/api/delete-from-r2', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
         },
         body: JSON.stringify({ id, src })
       });

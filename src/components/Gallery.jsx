@@ -71,7 +71,13 @@ export default function Gallery() {
   const [displayIdx, setDisplayIdx] = useState(null);
   const [imageOpacity, setImageOpacity] = useState(1);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
-  const [sortingMode, setSortingMode] = useState('chromatic_asc'); // 'chromatic_asc', 'chromatic_desc', 'manual'
+  const [sortingMode, _setSortingMode] = useState('chromatic_asc'); // 'chromatic_asc', 'chromatic_desc', 'manual'
+  const sortingModeRef = React.useRef('chromatic_asc');
+  const setSortingMode = (mode) => {
+    sortingModeRef.current = mode;
+    _setSortingMode(mode);
+  };
+  const hasFetchedRef = React.useRef(false);
   const location = useLocation();
   const skipDelay = location.state?.skipIntroDelay;
 
@@ -145,6 +151,9 @@ export default function Gallery() {
             created_at: item.created_at
           }));
           setArtworks(sortArtworks(loaded, mode));
+          hasFetchedRef.current = true;
+        } else if (data && data.length === 0) {
+          hasFetchedRef.current = true;
         }
       } catch (err) {
         console.warn("Failed to load artworks from Supabase database. Falling back to static local assets:", err.message);
@@ -157,7 +166,8 @@ export default function Gallery() {
     const channel = supabase
       .channel('gallery_changes_channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gallery_items' }, (payload) => {
-        if (!isMounted) return;
+        if (!isMounted || !hasFetchedRef.current) return;
+        const currentSortingMode = sortingModeRef.current;
         
         // Handle settings update
         if (payload.new && payload.new.title === '__site_settings__') {
@@ -190,7 +200,7 @@ export default function Gallery() {
           };
           setArtworks((prev) => {
             if (prev.some(item => item.id === newItem.id)) return prev;
-            return sortArtworks([...prev, newItem], sortingMode);
+            return sortArtworks([...prev, newItem], currentSortingMode);
           });
         } else if (payload.eventType === 'DELETE') {
           setArtworks((prev) => prev.filter(item => item.id !== payload.old.id));
@@ -222,9 +232,9 @@ export default function Gallery() {
               };
               if (exists) {
                 const updated = prev.map(item => item.id === payload.new.id ? newItem : item);
-                return sortArtworks(updated, sortingMode);
+                return sortArtworks(updated, currentSortingMode);
               } else {
-                return sortArtworks([...prev, newItem], sortingMode);
+                return sortArtworks([...prev, newItem], currentSortingMode);
               }
             });
           }
@@ -236,11 +246,14 @@ export default function Gallery() {
       isMounted = false;
       supabase.removeChannel(channel);
     };
-  }, [sortingMode]);
+  }, []); // Empty dependency array, using refs for sortingMode to avoid reconnecting
 
+  const preloadedImages = React.useRef(new Set());
   useEffect(() => {
     // Preload and decode all gallery images during intro to prevent scroll jank
     artworks.forEach((art) => {
+      if (preloadedImages.current.has(art.imgUrl)) return;
+      preloadedImages.current.add(art.imgUrl);
       const img = new Image();
       img.src = art.imgUrl;
       if (typeof img.decode === 'function') {
@@ -269,6 +282,7 @@ export default function Gallery() {
     let fallbackTimer;
 
     // 2. Start preloading & decoding the new image in background
+    if (!artworks[selectedIdx]) return;
     const img = new Image();
     img.src = artworks[selectedIdx].imgUrl;
 
@@ -312,26 +326,29 @@ export default function Gallery() {
       clearTimeout(swapTimer);
       clearTimeout(fallbackTimer);
     };
-  }, [selectedIdx, displayIdx]);
+  }, [selectedIdx, displayIdx, artworks]);
 
-  const colCount = windowWidth < 768 ? 2 : 3;
-  const columns = Array.from({ length: colCount }, () => []);
-  const columnHeights = Array.from({ length: colCount }, () => 0);
-  
-  artworks.forEach((art) => {
-    let shortestColIdx = 0;
-    let minHeight = columnHeights[0];
-    for (let i = 1; i < colCount; i++) {
-      if (columnHeights[i] < minHeight) {
-        minHeight = columnHeights[i];
-        shortestColIdx = i;
-      }
-    }
+  const masonryLayout = React.useMemo(() => {
+    const colCount = windowWidth < 768 ? 2 : 3;
+    const cols = Array.from({ length: colCount }, () => []);
+    const columnHeights = Array.from({ length: colCount }, () => 0);
     
-    columns[shortestColIdx].push(art);
-    // Relative height is 1 / aspectRatio
-    columnHeights[shortestColIdx] += (1 / art.aspectRatio);
-  });
+    artworks.forEach((art) => {
+      let shortestColIdx = 0;
+      let minHeight = columnHeights[0];
+      for (let i = 1; i < colCount; i++) {
+        if (columnHeights[i] < minHeight) {
+          minHeight = columnHeights[i];
+          shortestColIdx = i;
+        }
+      }
+      
+      cols[shortestColIdx].push(art);
+      // Relative height is 1 / aspectRatio. Prevent div by zero
+      columnHeights[shortestColIdx] += (1 / (art.aspectRatio || 1));
+    });
+    return cols;
+  }, [artworks, windowWidth]);
 
   useEffect(() => {
     if (selectedIdx !== null) {
@@ -357,7 +374,7 @@ export default function Gallery() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIdx]);
+  }, [selectedIdx, artworks.length]);
 
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
@@ -395,21 +412,25 @@ export default function Gallery() {
 
   const next = (e) => {
     if (e) e.stopPropagation();
-    if (selectedIdx !== null && selectedIdx < artworks.length - 1) {
-      setSelectedIdx(selectedIdx + 1);
-    }
+    setSelectedIdx(prev => {
+      if (prev !== null && prev < artworks.length - 1) return prev + 1;
+      return prev;
+    });
   };
 
   const prev = (e) => {
     if (e) e.stopPropagation();
-    if (selectedIdx !== null && selectedIdx > 0) {
-      setSelectedIdx(selectedIdx - 1);
-    }
+    setSelectedIdx(prev => {
+      if (prev !== null && prev > 0) return prev - 1;
+      return prev;
+    });
   };
 
   const closeIsland = () => {
     setSelectedIdx(null);
     setDisplayIdx(null);
+    setTouchStart(null);
+    setTouchEnd(null);
   };
 
   const springConfig = { type: "spring", stiffness: 350, damping: 35, mass: 1 };
@@ -498,7 +519,7 @@ export default function Gallery() {
           width: '100%'
         }}
       >
-        {columns.map((col, colIdx) => (
+        {masonryLayout.map((col, colIdx) => (
           <div key={colIdx} className="masonry-col">
             <AnimatePresence mode="popLayout">
               {col.map((art, itemIdx) => (
@@ -524,7 +545,7 @@ export default function Gallery() {
                       src={art.imgUrl}
                       alt={art.title}
                       className="gallery-image"
-                      loading="eager"
+                      loading={itemIdx < 2 ? "eager" : "lazy"}
                     />
                   </div>
                 </motion.div>
@@ -605,7 +626,7 @@ export default function Gallery() {
                 }
               }}
             >
-              {displayIdx !== null && (
+              {displayIdx !== null && artworks[displayIdx] && (
                 <motion.img 
                   src={artworks[displayIdx].imgUrl} 
                   alt={artworks[displayIdx].title}

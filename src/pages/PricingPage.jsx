@@ -14,7 +14,13 @@ export default function PricingPage() {
   }, [illustrations]);
 
   useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
+    let resizeTimer;
+    const handleResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        setWindowWidth(window.innerWidth);
+      }, 150);
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -84,7 +90,7 @@ export default function PricingPage() {
             <div style={{ background: 'rgba(120,120,120,0.05)', padding: windowWidth < 768 ? '1rem' : '1.5rem', borderRadius: '8px', display: 'flex', gap: windowWidth < 768 ? '0.7rem' : '1rem', border: '1px solid rgba(120,120,120,0.1)' }}>
               <Info size={18} style={{ flexShrink: 0, marginTop: '2px', opacity: 0.4 }} />
               <p style={{ fontSize: '0.85rem', opacity: 0.6, lineHeight: 1.5 }}>
-                <strong>Note:</strong> Rate is based on €150 per illustration. This interactive quote covers creation, digital delivery, and personal licensing. Bulk rates can be discussed for larger projects.
+                <strong>Note:</strong> Rate is based on $150 per illustration. This interactive quote covers creation, digital delivery, and personal licensing. Bulk rates can be discussed for larger projects.
               </p>
             </div>
           </div>
@@ -100,7 +106,7 @@ export default function PricingPage() {
           >
             <div style={{ opacity: 0.6, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.5rem' }}>Estimated Investment</div>
             <div style={{ fontSize: windowWidth < 768 ? '3.2rem' : '4.5rem', marginBottom: windowWidth < 768 ? '1.5rem' : '2.5rem' }}>
-              €{Math.round(total)}
+              ${Math.round(total)}
             </div>
             
             <button 

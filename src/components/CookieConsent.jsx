@@ -60,7 +60,7 @@ export default function CookieConsent() {
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                 <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Cookies &amp; Privacy
+                  Cookies & Privacy
                 </h4>
                 <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                   This website does not use tracking or marketing cookies. We only use strictly necessary cookies to ensure the website functions correctly. By continuing to browse, you agree to our{" "}
