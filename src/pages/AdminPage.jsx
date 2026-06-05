@@ -168,6 +168,9 @@ export default function AdminPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [isShaking, setIsShaking] = useState(false);
 
+  // Responsive mobile block state
+  const [isPhone, setIsPhone] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+
   // Upload States
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -178,14 +181,28 @@ export default function AdminPage() {
   const [analysisMeta, setAnalysisMeta] = useState(null);
 
   // Gallery items states
-  const [galleryItems, setGalleryItems] = useState([]);
+  const [activeItems, setActiveItems] = useState([]);
+  const [parkedItems, setParkedItems] = useState([]);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [sortingMode, setSortingMode] = useState('chromatic_asc'); // 'chromatic_asc', 'chromatic_desc', 'manual'
   const [isDirty, setIsDirty] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [copiedColor, setCopiedColor] = useState('');
 
+  // Feature request states
+  const [requestContent, setRequestContent] = useState('');
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+
   const fileInputRef = useRef(null);
+
+  // Responsive width listener
+  useEffect(() => {
+    const handleResize = () => {
+      setIsPhone(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Check auth session
   useEffect(() => {
@@ -241,7 +258,11 @@ export default function AdminPage() {
 
       // Filter out settings row
       const filtered = (data || []).filter(item => item.title !== '__site_settings__');
-      setGalleryItems(sortArtworks(filtered, mode));
+      const active = filtered.filter(item => !item.is_parked);
+      const parked = filtered.filter(item => item.is_parked);
+
+      setActiveItems(sortArtworks(active, mode));
+      setParkedItems(sortArtworks(parked, 'chromatic_asc'));
       setIsDirty(false);
     } catch (err) {
       console.error("Error loading gallery items:", err.message);
@@ -251,7 +272,7 @@ export default function AdminPage() {
   };
 
   const handleMove = (index, direction) => {
-    const newItems = [...galleryItems];
+    const newItems = [...activeItems];
     const targetIndex = direction === 'left' ? index - 1 : index + 1;
     
     if (targetIndex < 0 || targetIndex >= newItems.length) return;
@@ -260,7 +281,7 @@ export default function AdminPage() {
     newItems[index] = newItems[targetIndex];
     newItems[targetIndex] = temp;
     
-    setGalleryItems(newItems);
+    setActiveItems(newItems);
     setSortingMode('manual');
     setIsDirty(true);
   };
@@ -273,8 +294,8 @@ export default function AdminPage() {
     setShowResetConfirm(false);
     
     // Reset manual positioning locally to chromatic order
-    const sorted = sortArtworks(galleryItems, 'chromatic_asc');
-    setGalleryItems(sorted);
+    const sorted = sortArtworks(activeItems, 'chromatic_asc');
+    setActiveItems(sorted);
     setSortingMode('chromatic_asc');
     setIsDirty(true);
   };
@@ -282,7 +303,7 @@ export default function AdminPage() {
   const handleInvertChromaticOrder = () => {
     const nextMode = sortingMode === 'chromatic_desc' ? 'chromatic_asc' : 'chromatic_desc';
     setSortingMode(nextMode);
-    setGalleryItems(prev => sortArtworks(prev, nextMode));
+    setActiveItems(prev => sortArtworks(prev, nextMode));
     setIsDirty(true);
   };
 
@@ -310,7 +331,7 @@ export default function AdminPage() {
 
       // 2. Update item custom_orders
       if (sortingMode === 'manual') {
-        const promises = galleryItems.map((item, index) => {
+        const promises = activeItems.map((item, index) => {
           return supabase
             .from('gallery_items')
             .update({ custom_order: index + 1 })
@@ -320,11 +341,12 @@ export default function AdminPage() {
         const error = results.find(r => r.error);
         if (error) throw error.error;
       } else {
-        // Reset custom_order to null for all artworks
+        // Reset custom_order to null for all active artworks
         const { error: resetError } = await supabase
           .from('gallery_items')
           .update({ custom_order: null })
-          .neq('title', '__site_settings__');
+          .neq('title', '__site_settings__')
+          .eq('is_parked', false);
         if (resetError) throw resetError;
       }
 
@@ -336,6 +358,77 @@ export default function AdminPage() {
       setErrorMsg(`Failed to save changes: ${err.message}`);
     } finally {
       setIsLoadingItems(false);
+    }
+  };
+
+  const handlePublishParked = async (item) => {
+    setIsLoadingItems(true);
+    try {
+      const isManualMode = sortingMode === 'manual';
+      let nextOrder = null;
+
+      if (isManualMode) {
+        // Shift active items
+        const { data: activeList, error: fetchError } = await supabase
+          .from('gallery_items')
+          .select('id, custom_order')
+          .eq('is_parked', false)
+          .neq('title', '__site_settings__');
+
+        if (!fetchError && activeList) {
+          const updates = activeList.map(activeItem => {
+            const currentOrder = activeItem.custom_order ?? 1;
+            return supabase
+              .from('gallery_items')
+              .update({ custom_order: currentOrder + 1 })
+              .eq('id', activeItem.id);
+          });
+          await Promise.all(updates);
+        }
+        nextOrder = 1;
+      }
+
+      const { error: updateError } = await supabase
+        .from('gallery_items')
+        .update({
+          is_parked: false,
+          custom_order: nextOrder
+        })
+        .eq('id', item.id);
+
+      if (updateError) throw updateError;
+
+      await loadGalleryItems();
+    } catch (err) {
+      console.error("Failed to publish parked item:", err.message);
+      setErrorMsg(`Failed to publish parked item: ${err.message}`);
+    } finally {
+      setIsLoadingItems(false);
+    }
+  };
+
+  const handleRequestSubmit = async (e) => {
+    e.preventDefault();
+    if (!requestContent.trim()) return;
+
+    setIsSubmittingRequest(true);
+    setErrorMsg('');
+
+    try {
+      const { error } = await supabase
+        .from('feature_requests')
+        .insert({ content: requestContent.trim() });
+
+      if (error) throw error;
+
+      setRequestContent('');
+      setUploadSuccess(true);
+      setTimeout(() => setUploadSuccess(false), 3000);
+    } catch (err) {
+      console.error("Failed to submit feature request:", err.message);
+      setErrorMsg(`Failed to submit request: ${err.message}`);
+    } finally {
+      setIsSubmittingRequest(false);
     }
   };
 
@@ -469,7 +562,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleUpload = async () => {
+  const handleUpload = async (shouldPark = false) => {
     if (!selectedFile || !analysisMeta) return;
 
     setIsUploading(true);
@@ -504,7 +597,8 @@ export default function AdminPage() {
               aspect_ratio: analysisMeta.aspect_ratio,
               hue: analysisMeta.hue,
               saturation: analysisMeta.saturation,
-              lightness: analysisMeta.lightness
+              lightness: analysisMeta.lightness,
+              is_parked: shouldPark
             })
           });
 
@@ -568,6 +662,22 @@ export default function AdminPage() {
   };
 
   const springConfig = { type: "spring", stiffness: 300, damping: 30 };
+
+  if (isPhone) {
+    return (
+      <div className="mobile-restricted-overlay">
+        <div className="mobile-restricted-card">
+          <div className="mobile-restricted-icon">
+            <Lock size={32} />
+          </div>
+          <h2 className="mobile-restricted-title">Admin Access Restricted</h2>
+          <p className="mobile-restricted-desc">
+            The creative dashboard is only accessible on Desktop or Tablet/iPad devices. Please use a larger screen to manage your portfolio.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-page-container">
@@ -1200,8 +1310,9 @@ export default function AdminPage() {
         .order-actions-row {
           display: flex;
           flex-wrap: wrap;
-          gap: 1rem;
-          margin-top: 1rem;
+          gap: 1.2rem;
+          margin-top: 1.2rem;
+          margin-bottom: 2.5rem;
         }
 
         .admin-item-controls {
@@ -1251,27 +1362,24 @@ export default function AdminPage() {
         }
 
         .btn-action-order {
-          display: flex;
+          display: inline-flex;
           align-items: center;
-          gap: 0.5rem;
-          padding: 0.6rem 1.2rem;
+          gap: 0.6rem;
+          padding: 0.8rem 1.6rem;
           font-family: var(--font-main);
-          font-size: 0.85rem;
+          font-size: 0.95rem;
           font-weight: 600;
           color: var(--text-primary);
-          background: rgba(var(--text-primary-rgb), 0.04);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-md);
+          background: transparent;
+          border: 1px solid var(--text-primary);
+          border-radius: 8px;
           cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          transition: all 0.3s ease;
         }
 
         .btn-action-order:hover {
-          background: var(--text-primary);
-          color: var(--bg-primary);
-          border-color: var(--text-primary);
+          background: rgba(var(--text-primary-rgb), 0.05);
           transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
         }
 
         .btn-action-order:active {
@@ -1282,7 +1390,19 @@ export default function AdminPage() {
           background: var(--text-primary);
           color: var(--bg-primary);
           border-color: var(--text-primary);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-action-order.save-changes-btn {
+          background: rgba(16, 185, 129, 0.1);
+          color: #10b981;
+          border-color: #10b981;
+        }
+
+        .btn-action-order.save-changes-btn:hover {
+          background: #10b981;
+          color: var(--bg-primary);
+          border-color: #10b981;
+          transform: translateY(-2px);
         }
 
         /* Color Palette Section styles */
@@ -1349,6 +1469,235 @@ export default function AdminPage() {
           align-items: center;
           justify-content: center;
           border: 1px solid var(--border);
+        }
+
+        /* Parked section styles */
+        .parked-section {
+          width: 100%;
+          margin-bottom: 3.5rem;
+          padding: 2.5rem 0 1rem 0;
+          border-top: 1px solid var(--border);
+        }
+
+        .parked-empty-state {
+          padding: 2rem;
+          text-align: center;
+          color: var(--text-secondary);
+          border: 1px dashed var(--border);
+          border-radius: var(--radius-md);
+          font-size: 0.9rem;
+          background: rgba(var(--bg-primary-rgb), 0.01);
+        }
+
+        .parked-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 1.5rem;
+        }
+
+        @media (max-width: 900px) {
+          .parked-grid {
+            grid-template-columns: repeat(3, 1fr);
+          }
+        }
+
+        @media (max-width: 600px) {
+          .parked-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        .parked-item-card {
+          border-radius: var(--radius-md);
+          overflow: hidden;
+          background: var(--glass-bg);
+          border: 1px solid var(--glass-border);
+          position: relative;
+          transition: all 0.3s ease;
+        }
+
+        .parked-item-card:hover {
+          border-color: var(--text-primary);
+          transform: translateY(-4px);
+        }
+
+        .parked-image-wrapper {
+          width: 100%;
+          aspect-ratio: 1;
+          overflow: hidden;
+          background: rgba(var(--bg-primary-rgb), 0.05);
+          position: relative;
+        }
+
+        .parked-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          transition: transform 0.3s ease;
+        }
+
+        .parked-item-card:hover .parked-img {
+          transform: scale(1.05);
+        }
+
+        .parked-item-card:hover .delete-overlay-btn {
+          opacity: 1;
+          transform: scale(1);
+        }
+
+        .parked-details {
+          padding: 0.8rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .parked-title {
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .publish-parked-btn {
+          width: 100%;
+          padding: 0.5rem;
+          font-size: 0.75rem;
+          font-weight: 600;
+          border-radius: var(--radius-sm);
+          background: var(--text-primary);
+          color: var(--bg-primary);
+          border: none;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.3rem;
+          transition: all 0.2s ease;
+        }
+
+        .publish-parked-btn:hover {
+          opacity: 0.9;
+          transform: translateY(-1px);
+        }
+
+        /* Feature Request Styles */
+        .request-section {
+          width: 100%;
+          margin-top: 4rem;
+          padding: 2.5rem 0 1rem 0;
+          border-top: 1px solid var(--border);
+        }
+
+        .request-form {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+          max-width: 600px;
+        }
+
+        .request-textarea {
+          width: 100%;
+          min-height: 120px;
+          background: rgba(var(--bg-primary-rgb), 0.03);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          padding: 1rem;
+          color: var(--text-primary);
+          font-size: 0.95rem;
+          outline: none;
+          transition: all 0.2s ease;
+          font-family: inherit;
+          resize: vertical;
+        }
+
+        .request-textarea:focus {
+          border-color: var(--text-primary);
+          box-shadow: 0 0 0 2px rgba(var(--text-primary), 0.1);
+        }
+
+        .request-submit-btn {
+          align-self: flex-start;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.8rem 1.6rem;
+          font-family: var(--font-main);
+          font-size: 0.95rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          background: transparent;
+          border: 1px solid var(--text-primary);
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+
+        .request-submit-btn:hover:not(:disabled) {
+          background: var(--text-primary);
+          color: var(--bg-primary);
+          border-color: var(--text-primary);
+          transform: translateY(-2px);
+        }
+
+        .request-submit-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        /* Mobile Block styles */
+        .mobile-restricted-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          z-index: 99999;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: 2rem;
+          font-family: var(--font-main);
+        }
+
+        .mobile-restricted-card {
+          max-width: 400px;
+          padding: 3rem 2rem;
+          background: var(--glass-bg);
+          border: 1px solid var(--glass-border);
+          border-radius: var(--radius-lg);
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+        }
+
+        .mobile-restricted-icon {
+          color: var(--text-secondary);
+          margin-bottom: 1.5rem;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 64px;
+          height: 64px;
+          border-radius: 50%;
+          background: rgba(var(--bg-primary-rgb), 0.05);
+          border: 1px solid var(--border);
+        }
+
+        .mobile-restricted-title {
+          font-size: 1.5rem;
+          font-weight: 600;
+          margin-bottom: 1rem;
+        }
+
+        .mobile-restricted-desc {
+          font-size: 0.95rem;
+          color: var(--text-secondary);
+          line-height: 1.5;
         }
       `}</style>
 
@@ -1526,37 +1875,107 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                <button 
-                  onClick={handleUpload}
-                  disabled={!selectedFile || isUploading || !analysisMeta}
-                  className="action-button"
-                >
-                  {isUploading ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={18} />
-                      Publish to Portfolio
-                    </>
-                  )}
-                </button>
+                <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
+                  <button 
+                    onClick={() => handleUpload(false)}
+                    disabled={!selectedFile || isUploading || !analysisMeta}
+                    className="action-button"
+                    style={{ flex: 1 }}
+                  >
+                    {isUploading ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={18} />
+                        Publish to Gallery
+                      </>
+                    )}
+                  </button>
+                  <button 
+                    onClick={() => handleUpload(true)}
+                    disabled={!selectedFile || isUploading || !analysisMeta}
+                    className="action-button"
+                    style={{ 
+                      flex: 1,
+                      background: 'transparent',
+                      border: '1px solid var(--text-primary)',
+                      color: 'var(--text-primary)'
+                    }}
+                  >
+                    {isUploading ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Lock size={18} />
+                        Park in Not Sure Yet
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
+            </div>
+
+            {/* Not sure yet Section */}
+            <div className="parked-section">
+              <h3 className="section-header" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Lock size={20} />
+                Not sure yet ({parkedItems.length})
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                Artworks parked here are hidden from the public gallery. You can publish them to the gallery with a single click.
+              </p>
+              
+              {parkedItems.length === 0 ? (
+                <div className="parked-empty-state">
+                  No parked illustrations. Use the "Park in Not Sure Yet" button when uploading.
+                </div>
+              ) : (
+                <div className="parked-grid">
+                  {parkedItems.map((item) => (
+                    <div key={item.id} className="parked-item-card">
+                      <button 
+                        onClick={() => handleDelete(item.id, item.src)}
+                        className="delete-overlay-btn"
+                        aria-label="Delete artwork"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                      <div className="parked-image-wrapper">
+                        <img src={item.src} alt={item.title} className="parked-img" />
+                      </div>
+                      <div className="parked-details">
+                        <div className="parked-title">{item.title}</div>
+                        <button 
+                          onClick={() => handlePublishParked(item)}
+                          className="publish-parked-btn"
+                        >
+                          <Sparkles size={12} />
+                          Publish to Gallery
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Color Palette Section */}
             <div className="palette-section">
               <h3 className="section-header" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Sparkles size={20} />
-                Illustrations Color Palette
+                Your top colors
               </h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
                 Daria's most used color tones across all portfolio items. Click any color swatch to copy its HEX code for your design tools.
               </p>
               <div className="palette-grid">
-                {getSignaturePalette(galleryItems).map((swatch, idx) => (
+                {getSignaturePalette([...activeItems, ...parkedItems]).map((swatch, idx) => (
                   <div 
                     key={idx} 
                     className="palette-swatch-card"
@@ -1578,7 +1997,7 @@ export default function AdminPage() {
               <div className="flex flex-col gap-4 mb-8">
                 <h3 className="section-header" style={{ marginBottom: 0 }}>
                   <ImageIcon size={22} />
-                  Active Portfolio Artworks ({galleryItems.length})
+                  Active Portfolio Artworks ({activeItems.length})
                 </h3>
                 <div className="order-actions-row">
                   <button 
@@ -1614,11 +2033,11 @@ export default function AdminPage() {
                 <div className="flex justify-center p-12">
                   <Loader2 size={36} className="animate-spin text-purple-500" />
                 </div>
-              ) : galleryItems.length === 0 ? (
+              ) : activeItems.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">The database gallery is empty or loading.</p>
               ) : (
                 <div className="admin-gallery-grid">
-                  {galleryItems.map((item, index) => (
+                  {activeItems.map((item, index) => (
                     <div key={item.id} className="admin-item-card">
                       {isNew(item.created_at) && (
                         <div className="new-badge">
@@ -1665,7 +2084,7 @@ export default function AdminPage() {
                           </button>
                           <span className="order-badge">#{index + 1}</span>
                           <button 
-                            disabled={index === galleryItems.length - 1} 
+                            disabled={index === activeItems.length - 1} 
                             onClick={() => handleMove(index, 'right')}
                             className="move-btn"
                             title="Move Forward"
@@ -1679,6 +2098,45 @@ export default function AdminPage() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Feature Request Section */}
+            <div className="request-section">
+              <h3 className="section-header" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Sparkles size={20} />
+                Request new features or improvements
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                Do you have ideas for improving the site's design or want to request new features for this admin panel? Let me know here.
+              </p>
+              
+              <form onSubmit={handleRequestSubmit} className="request-form">
+                <textarea
+                  className="request-textarea"
+                  placeholder="Describe your design updates or new functional ideas..."
+                  value={requestContent}
+                  onChange={(e) => setRequestContent(e.target.value)}
+                  disabled={isSubmittingRequest}
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={isSubmittingRequest || !requestContent.trim()}
+                  className="request-submit-btn"
+                >
+                  {isSubmittingRequest ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle size={16} />
+                      Submit Request
+                    </>
+                  )}
+                </button>
+              </form>
             </div>
           </motion.div>
         )}

@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { image, filename, title, aspect_ratio, hue, saturation, lightness } = req.body;
+  const { image, filename, title, aspect_ratio, hue, saturation, lightness, is_parked } = req.body;
 
   if (!image || !filename || aspect_ratio === undefined || hue === undefined || saturation === undefined || lightness === undefined) {
     return res.status(400).json({ error: 'Missing required parameters' });
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
       nextOrder = 1;
     }
 
-    console.log(`Saving ${title} metadata to Supabase (order: ${nextOrder})...`);
+    console.log(`Saving ${title} metadata to Supabase (order: ${nextOrder}, parked: ${!!is_parked})...`);
     const { data: dbData, error: dbError } = await supabase
       .from('gallery_items')
       .insert({
@@ -108,7 +108,8 @@ export default async function handler(req, res) {
         hue: parseFloat(hue),
         saturation: parseFloat(saturation),
         lightness: parseFloat(lightness),
-        custom_order: nextOrder
+        custom_order: nextOrder,
+        is_parked: !!is_parked
       })
       .select();
 

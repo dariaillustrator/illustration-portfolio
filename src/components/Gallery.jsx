@@ -134,7 +134,7 @@ export default function Gallery() {
           }
           setSortingMode(mode);
 
-          const filteredData = data.filter(item => item.title !== '__site_settings__');
+          const filteredData = data.filter(item => item.title !== '__site_settings__' && !item.is_parked);
 
           const loaded = filteredData.map((item) => ({
             id: item.id,
@@ -177,8 +177,8 @@ export default function Gallery() {
         }
 
         if (payload.eventType === 'INSERT') {
-          // Ignore settings row
-          if (payload.new.title === '__site_settings__') return;
+          // Ignore settings row and parked items
+          if (payload.new.title === '__site_settings__' || payload.new.is_parked) return;
 
           const newItem = {
             id: payload.new.id,
@@ -205,25 +205,36 @@ export default function Gallery() {
           // Ignore settings row
           if (payload.new.title === '__site_settings__') return;
 
-          setArtworks((prev) => {
-            const updated = prev.map(item => {
-              if (item.id === payload.new.id) {
-                return {
-                  ...item,
-                  title: payload.new.title,
-                  imgUrl: payload.new.src,
-                  aspectRatio: payload.new.aspect_ratio,
-                  hue: payload.new.hue,
-                  saturation: payload.new.saturation,
-                  lightness: payload.new.lightness,
-                  custom_order: payload.new.custom_order,
-                  created_at: payload.new.created_at
-                };
+          if (payload.new.is_parked) {
+            // Remove it from the grid if it's now parked
+            setArtworks((prev) => prev.filter(item => item.id !== payload.new.id));
+          } else {
+            // Update or add it
+            setArtworks((prev) => {
+              const exists = prev.some(item => item.id === payload.new.id);
+              const newItem = {
+                id: payload.new.id,
+                title: payload.new.title,
+                year: payload.new.created_at ? new Date(payload.new.created_at).getFullYear().toString() : '2026',
+                medium: 'Fine Art Print',
+                category: 'Illustration',
+                imgUrl: payload.new.src,
+                description: 'Part of the archival collection exploring nature and ethereal forms.',
+                aspectRatio: payload.new.aspect_ratio,
+                hue: payload.new.hue,
+                saturation: payload.new.saturation,
+                lightness: payload.new.lightness,
+                custom_order: payload.new.custom_order,
+                created_at: payload.new.created_at
+              };
+              if (exists) {
+                const updated = prev.map(item => item.id === payload.new.id ? newItem : item);
+                return sortArtworks(updated, sortingMode);
+              } else {
+                return sortArtworks([...prev, newItem], sortingMode);
               }
-              return item;
             });
-            return sortArtworks(updated, sortingMode);
-          });
+          }
         }
       })
       .subscribe();
