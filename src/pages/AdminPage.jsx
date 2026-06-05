@@ -33,6 +33,33 @@ function rgbToHsl(r, g, b) {
   return { h, s, l };
 }
 
+// Helper to convert HSL to HEX
+function hslToHex(h, s, l) {
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l; // achromatic
+  } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    const hue2rgb = (t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    r = hue2rgb(h + 1/3);
+    g = hue2rgb(h);
+    b = hue2rgb(h - 1/3);
+  }
+  const toHex = x => {
+    const hex = Math.round(x * 255).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+}
+
 // Extract dominant HSL and Aspect Ratio from Image
 async function analyzeImage(file) {
   return new Promise((resolve, reject) => {
@@ -145,6 +172,8 @@ export default function AdminPage() {
   // Gallery items states
   const [galleryItems, setGalleryItems] = useState([]);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
+  const [isColorInverted, setIsColorInverted] = useState(false);
+  const [copiedColor, setCopiedColor] = useState('');
 
   const fileInputRef = useRef(null);
 
@@ -157,7 +186,7 @@ export default function AdminPage() {
     }
   }, []);
 
-  const sortArtworks = (list) => {
+  const sortArtworks = (list, isInverted = false) => {
     return [...list].sort((a, b) => {
       const orderA = a.custom_order;
       const orderB = b.custom_order;
@@ -175,9 +204,9 @@ export default function AdminPage() {
       const lA = a.lightness ?? 0;
       const lB = b.lightness ?? 0;
       
-      if (hA !== hB) return hA - hB;
-      if (sA !== sB) return sA - sB;
-      return lA - lB;
+      if (hA !== hB) return isInverted ? hB - hA : hA - hB;
+      if (sA !== sB) return isInverted ? sB - sA : sA - sB;
+      return isInverted ? lB - lA : lA - lB;
     });
   };
 
@@ -189,7 +218,15 @@ export default function AdminPage() {
         .select('*');
 
       if (error) throw error;
-      setGalleryItems(sortArtworks(data || []));
+
+      // Extract settings row
+      const settingsItem = data.find(item => item.title === '__site_settings__');
+      const inverted = settingsItem ? settingsItem.hue === 1.0 : false;
+      setIsColorInverted(inverted);
+
+      // Filter out settings row
+      const filtered = (data || []).filter(item => item.title !== '__site_settings__');
+      setGalleryItems(sortArtworks(filtered, inverted));
     } catch (err) {
       console.error("Error loading gallery items:", err.message);
     } finally {
@@ -238,12 +275,29 @@ export default function AdminPage() {
     if (!window.confirm("Are you sure you want to reset all manual positions and restore automatic color sorting?")) return;
     setIsLoadingItems(true);
     try {
-      const { error } = await supabase
+      // Reset custom_order for all items
+      const { error: resetError } = await supabase
         .from('gallery_items')
         .update({ custom_order: null })
-        .neq('id', '00000000-0000-0000-0000-000000000000');
+        .neq('title', '__site_settings__');
       
-      if (error) throw error;
+      if (resetError) throw resetError;
+
+      // Also reset inversion settings back to false
+      const { error: settingsError } = await supabase
+        .from('gallery_items')
+        .upsert({
+          id: '00000000-0000-0000-0000-000000000000',
+          src: 'settings',
+          title: '__site_settings__',
+          aspect_ratio: 0,
+          hue: 0.0,
+          saturation: 0,
+          lightness: 0
+        });
+      
+      if (settingsError) throw settingsError;
+
       await loadGalleryItems();
     } catch (err) {
       console.error("Failed to reset order:", err.message);
@@ -256,30 +310,21 @@ export default function AdminPage() {
   const handleInvertChromaticOrder = async () => {
     setIsLoadingItems(true);
     try {
-      const sortedByColorReverse = [...galleryItems].sort((a, b) => {
-        const hA = a.hue ?? 0;
-        const hB = b.hue ?? 0;
-        const sA = a.saturation ?? 0;
-        const sB = b.saturation ?? 0;
-        const lA = a.lightness ?? 0;
-        const lB = b.lightness ?? 0;
-        
-        if (hA !== hB) return hB - hA;
-        if (sA !== sB) return sB - sA;
-        return lB - lA;
-      });
+      const nextInvertedValue = isColorInverted ? 0.0 : 1.0;
+      
+      const { error } = await supabase
+        .from('gallery_items')
+        .upsert({
+          id: '00000000-0000-0000-0000-000000000000',
+          src: 'settings',
+          title: '__site_settings__',
+          aspect_ratio: 0,
+          hue: nextInvertedValue,
+          saturation: 0,
+          lightness: 0
+        });
 
-      const promises = sortedByColorReverse.map((item, index) => {
-        return supabase
-          .from('gallery_items')
-          .update({ custom_order: index + 1 })
-          .eq('id', item.id);
-      });
-      
-      const results = await Promise.all(promises);
-      const error = results.find(r => r.error);
-      if (error) throw error.error;
-      
+      if (error) throw error;
       await loadGalleryItems();
     } catch (err) {
       console.error("Failed to invert order:", err.message);
@@ -287,6 +332,52 @@ export default function AdminPage() {
     } finally {
       setIsLoadingItems(false);
     }
+  };
+
+  const handleCopyColor = (hex) => {
+    navigator.clipboard.writeText(hex);
+    setCopiedColor(hex);
+    setTimeout(() => setCopiedColor(''), 1500);
+  };
+
+  const getSignaturePalette = (items) => {
+    if (!items || items.length === 0) return [];
+    
+    const groups = {};
+    items.forEach(item => {
+      const hBin = Math.round((item.hue || 0) * 12) % 12;
+      const sBin = Math.round((item.saturation || 0) * 3);
+      const lBin = Math.round((item.lightness || 0) * 3);
+      const key = `${hBin}-${sBin}-${lBin}`;
+      
+      if (!groups[key]) {
+        groups[key] = {
+          hSum: 0,
+          sSum: 0,
+          lSum: 0,
+          count: 0
+        };
+      }
+      
+      groups[key].hSum += item.hue || 0;
+      groups[key].sSum += item.saturation || 0;
+      groups[key].lSum += item.lightness || 0;
+      groups[key].count += 1;
+    });
+    
+    return Object.values(groups)
+      .map(g => {
+        const h = g.hSum / g.count;
+        const s = g.sSum / g.count;
+        const l = g.lSum / g.count;
+        return {
+          h, s, l,
+          hex: hslToHex(h, s, l),
+          count: g.count
+        };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
   };
 
   const handleKeyPress = (num) => {
@@ -924,7 +1015,7 @@ export default function AdminPage() {
         .admin-item-title {
           font-size: 0.9rem;
           font-weight: 600;
-          color: #e5e7eb;
+          color: var(--text-primary);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -932,7 +1023,7 @@ export default function AdminPage() {
 
         .admin-item-meta {
           font-size: 0.75rem;
-          color: #9ca3af;
+          color: var(--text-secondary);
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -955,7 +1046,7 @@ export default function AdminPage() {
           opacity: 0;
           transform: scale(0.8);
           transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
           z-index: 5;
         }
 
@@ -967,6 +1058,160 @@ export default function AdminPage() {
         .delete-overlay-btn:hover {
           background: #ef4444;
           transform: scale(1.1);
+        }
+
+        .order-actions-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 1rem;
+          margin-top: 1rem;
+        }
+
+        .admin-item-controls {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-top: 0.8rem;
+          padding-top: 0.8rem;
+          border-top: 1px solid var(--border);
+          gap: 0.4rem;
+        }
+
+        .move-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.2rem;
+          padding: 0.35rem 0.55rem;
+          font-size: 0.75rem;
+          font-weight: 600;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          background: rgba(var(--text-primary-rgb), 0.03);
+          color: var(--text-primary);
+          transition: all 0.2s ease;
+          cursor: pointer;
+        }
+
+        .move-btn:hover:not(:disabled) {
+          background: var(--text-primary);
+          color: var(--bg-primary);
+          border-color: var(--text-primary);
+        }
+
+        .move-btn:disabled {
+          opacity: 0.25;
+          cursor: not-allowed;
+        }
+
+        .order-badge {
+          font-size: 0.7rem;
+          font-weight: 700;
+          color: var(--text-secondary);
+          background: rgba(var(--text-primary-rgb), 0.05);
+          padding: 0.2rem 0.4rem;
+          border-radius: 4px;
+        }
+
+        .btn-action-order {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.6rem 1.2rem;
+          font-family: var(--font-main);
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          background: rgba(var(--text-primary-rgb), 0.04);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .btn-action-order:hover {
+          background: var(--text-primary);
+          color: var(--bg-primary);
+          border-color: var(--text-primary);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .btn-action-order:active {
+          transform: translateY(0);
+        }
+
+        .btn-action-order.active-toggle {
+          background: var(--text-primary);
+          color: var(--bg-primary);
+          border-color: var(--text-primary);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Color Palette Section styles */
+        .palette-section {
+          margin-bottom: 3.5rem;
+          padding: 2.5rem 0 1rem 0;
+          border-top: 1px solid var(--border);
+        }
+
+        .palette-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 1.2rem;
+          margin-top: 1.5rem;
+        }
+
+        .palette-swatch-card {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.5rem;
+          background: var(--glass-bg);
+          border: 1px solid var(--glass-border);
+          padding: 1rem 0.8rem;
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          transition: all 0.2s ease;
+          position: relative;
+          min-width: 90px;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+        }
+
+        .palette-swatch-card:hover {
+          transform: translateY(-3px);
+          border-color: var(--text-primary);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+        }
+
+        .palette-swatch-color {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          border: 1px solid var(--border);
+        }
+
+        .palette-swatch-hex {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+
+        .palette-swatch-count {
+          position: absolute;
+          top: -6px;
+          right: -6px;
+          background: var(--text-primary);
+          color: var(--bg-primary);
+          font-size: 0.65rem;
+          font-weight: 700;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid var(--border);
         }
       `}</style>
 
@@ -1164,6 +1409,33 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {/* Color Palette Section */}
+            <div className="palette-section">
+              <h3 className="section-header" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Sparkles size={20} />
+                Illustrations Color Palette
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                Daria's most used color tones across all portfolio items. Click any color swatch to copy its HEX code for your design tools.
+              </p>
+              <div className="palette-grid">
+                {getSignaturePalette(galleryItems).map((swatch, idx) => (
+                  <div 
+                    key={idx} 
+                    className="palette-swatch-card"
+                    onClick={() => handleCopyColor(swatch.hex)}
+                  >
+                    <div 
+                      className="palette-swatch-color"
+                      style={{ background: swatch.hex }}
+                    />
+                    <span className="palette-swatch-hex">{swatch.hex}</span>
+                    <span className="palette-swatch-count">{swatch.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* List & Edit section */}
             <div className="list-section">
               <div className="flex flex-col gap-4 mb-8">
@@ -1172,13 +1444,19 @@ export default function AdminPage() {
                   Active Portfolio Artworks ({galleryItems.length})
                 </h3>
                 <div className="order-actions-row">
-                  <button onClick={handleResetOrder} className="btn-secondary flex items-center gap-2" style={{ padding: '0.6rem 1.2rem', fontSize: '0.85rem', height: '38px', borderRadius: '8px' }}>
+                  <button 
+                    onClick={handleResetOrder} 
+                    className="btn-action-order"
+                  >
                     <RefreshCw size={14} />
                     Reset to Color Order
                   </button>
-                  <button onClick={handleInvertChromaticOrder} className="btn-secondary flex items-center gap-2" style={{ padding: '0.6rem 1.2rem', fontSize: '0.85rem', height: '38px', borderRadius: '8px' }}>
-                    <Sliders style={{ transform: 'rotate(180deg)' }} size={14} />
-                    Invert Color Sorting
+                  <button 
+                    onClick={handleInvertChromaticOrder} 
+                    className={`btn-action-order ${isColorInverted ? 'active-toggle' : ''}`}
+                  >
+                    <Sliders style={{ transform: isColorInverted ? 'rotate(0deg)' : 'rotate(180deg)' }} size={14} />
+                    {isColorInverted ? 'Inverted Color Sorting' : 'Invert Color Sorting'}
                   </button>
                 </div>
               </div>
@@ -1225,17 +1503,19 @@ export default function AdminPage() {
                             disabled={index === 0} 
                             onClick={() => handleMove(index, 'left')}
                             className="move-btn"
-                            title="Move left"
+                            title="Move Backward"
                           >
                             <ArrowLeft size={14} />
+                            <span>Prev</span>
                           </button>
-                          <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>Order: {item.custom_order || 'Auto'}</span>
+                          <span className="order-badge">#{index + 1}</span>
                           <button 
                             disabled={index === galleryItems.length - 1} 
                             onClick={() => handleMove(index, 'right')}
                             className="move-btn"
-                            title="Move right"
+                            title="Move Forward"
                           >
+                            <span>Next</span>
                             <ArrowRight size={14} />
                           </button>
                         </div>
@@ -1245,6 +1525,36 @@ export default function AdminPage() {
                 </div>
               )}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {copiedColor && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: 20, x: '-50%' }}
+            style={{
+              position: 'fixed',
+              bottom: '2rem',
+              left: '50%',
+              background: 'var(--text-primary)',
+              color: 'var(--bg-primary)',
+              padding: '0.8rem 1.5rem',
+              borderRadius: '30px',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              zIndex: 9999,
+              fontFamily: 'var(--font-main)',
+              fontSize: '0.9rem',
+              fontWeight: '500'
+            }}
+          >
+            <CheckCircle size={16} />
+            <span>Copied {copiedColor} to clipboard!</span>
           </motion.div>
         )}
       </AnimatePresence>

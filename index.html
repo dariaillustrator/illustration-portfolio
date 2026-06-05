@@ -32,6 +32,29 @@
     <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&display=swap" rel="stylesheet">
   </head>
   <body>
+    <!-- Theme Initialization Script to Prevent Flash -->
+    <script>
+      (function() {
+        const savedTheme = localStorage.getItem('theme');
+        let isDark = false;
+        if (savedTheme === 'dark') {
+          isDark = true;
+        } else if (savedTheme === 'light') {
+          isDark = false;
+        } else {
+          // Combined OS preference & Time of Day synergy
+          const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const hour = new Date().getHours();
+          const isNightTime = (hour < 6 || hour >= 18);
+          isDark = systemDark || isNightTime;
+        }
+        if (isDark) {
+          document.body.classList.add('dark-theme');
+        } else {
+          document.body.classList.add('light-theme');
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

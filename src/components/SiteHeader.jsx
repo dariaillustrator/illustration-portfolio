@@ -31,17 +31,51 @@ export default function SiteHeader() {
   ];
 
   useEffect(() => {
-    // Initial theme check
     const savedTheme = localStorage.getItem('theme');
-    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const systemDarkMedia = window.matchMedia('(prefers-color-scheme: dark)');
     
-    if (savedTheme === 'dark' || (!savedTheme && systemDark)) {
+    const determineTheme = () => {
+      if (savedTheme === 'dark') return true;
+      if (savedTheme === 'light') return false;
+      
+      // Combined OS preference & Time of Day synergy
+      const systemDark = systemDarkMedia.matches;
+      const hour = new Date().getHours();
+      const isNightTime = (hour < 6 || hour >= 18);
+      return systemDark || isNightTime;
+    };
+    
+    const isDark = determineTheme();
+    if (isDark) {
+      document.body.classList.remove('light-theme');
       document.body.classList.add('dark-theme');
       setIsDarkMode(true);
-    } else if (savedTheme === 'light') {
+    } else {
+      document.body.classList.remove('dark-theme');
       document.body.classList.add('light-theme');
       setIsDarkMode(false);
     }
+    
+    // Dynamically react to OS theme changes if user has no saved preference
+    const handleSystemThemeChange = (e) => {
+      if (!localStorage.getItem('theme')) {
+        const hour = new Date().getHours();
+        const isNightTime = (hour < 6 || hour >= 18);
+        const shouldBeDark = e.matches || isNightTime;
+        if (shouldBeDark) {
+          document.body.classList.remove('light-theme');
+          document.body.classList.add('dark-theme');
+          setIsDarkMode(true);
+        } else {
+          document.body.classList.remove('dark-theme');
+          document.body.classList.add('light-theme');
+          setIsDarkMode(false);
+        }
+      }
+    };
+    
+    systemDarkMedia.addEventListener('change', handleSystemThemeChange);
+    return () => systemDarkMedia.removeEventListener('change', handleSystemThemeChange);
   }, []);
 
   const toggleTheme = () => {

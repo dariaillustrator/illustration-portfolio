@@ -70,6 +70,7 @@ export default function Gallery() {
   const [displayIdx, setDisplayIdx] = useState(null);
   const [imageOpacity, setImageOpacity] = useState(1);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  const [isColorInverted, setIsColorInverted] = useState(false);
   const location = useLocation();
   const skipDelay = location.state?.skipIntroDelay;
 
@@ -79,7 +80,7 @@ export default function Gallery() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const sortArtworks = (list) => {
+  const sortArtworks = (list, isInverted = false) => {
     return [...list].sort((a, b) => {
       // 1. Sort by custom_order first if present
       const orderA = a.custom_order;
@@ -99,9 +100,9 @@ export default function Gallery() {
       const lA = a.lightness ?? 0;
       const lB = b.lightness ?? 0;
       
-      if (hA !== hB) return hA - hB;
-      if (sA !== sB) return sA - sB;
-      return lA - lB;
+      if (hA !== hB) return isInverted ? hB - hA : hA - hB;
+      if (sA !== sB) return isInverted ? sB - sA : sA - sB;
+      return isInverted ? lB - lA : lA - lB;
     });
   };
 
@@ -117,7 +118,14 @@ export default function Gallery() {
         if (error) throw error;
         
         if (data && data.length > 0 && isMounted) {
-          const loaded = data.map((item) => ({
+          // Filter out site settings row
+          const settingsItem = data.find(item => item.title === '__site_settings__');
+          const inverted = settingsItem ? settingsItem.hue === 1.0 : false;
+          setIsColorInverted(inverted);
+
+          const filteredData = data.filter(item => item.title !== '__site_settings__');
+
+          const loaded = filteredData.map((item) => ({
             id: item.id,
             title: item.title,
             year: item.created_at ? new Date(item.created_at).getFullYear().toString() : '2026',
@@ -131,7 +139,7 @@ export default function Gallery() {
             lightness: item.lightness,
             custom_order: item.custom_order
           }));
-          setArtworks(sortArtworks(loaded));
+          setArtworks(sortArtworks(loaded, inverted));
         }
       } catch (err) {
         console.warn("Failed to load artworks from Supabase database. Falling back to static local assets:", err.message);
@@ -146,7 +154,18 @@ export default function Gallery() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gallery_items' }, (payload) => {
         if (!isMounted) return;
         
+        // Handle settings update
+        if (payload.new && payload.new.title === '__site_settings__') {
+          const inverted = payload.new.hue === 1.0;
+          setIsColorInverted(inverted);
+          setArtworks((prev) => sortArtworks(prev, inverted));
+          return;
+        }
+
         if (payload.eventType === 'INSERT') {
+          // Ignore settings row
+          if (payload.new.title === '__site_settings__') return;
+
           const newItem = {
             id: payload.new.id,
             title: payload.new.title,
@@ -163,11 +182,14 @@ export default function Gallery() {
           };
           setArtworks((prev) => {
             if (prev.some(item => item.id === newItem.id)) return prev;
-            return sortArtworks([...prev, newItem]);
+            return sortArtworks([...prev, newItem], isColorInverted);
           });
         } else if (payload.eventType === 'DELETE') {
           setArtworks((prev) => prev.filter(item => item.id !== payload.old.id));
         } else if (payload.eventType === 'UPDATE') {
+          // Ignore settings row
+          if (payload.new.title === '__site_settings__') return;
+
           setArtworks((prev) => {
             const updated = prev.map(item => {
               if (item.id === payload.new.id) {
@@ -184,7 +206,7 @@ export default function Gallery() {
               }
               return item;
             });
-            return sortArtworks(updated);
+            return sortArtworks(updated, isColorInverted);
           });
         }
       })
@@ -194,7 +216,7 @@ export default function Gallery() {
       isMounted = false;
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [isColorInverted]);
 
   useEffect(() => {
     // Preload and decode all gallery images during intro to prevent scroll jank
