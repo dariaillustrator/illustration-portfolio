@@ -159,7 +159,7 @@ function isNew(createdAt) {
   const created = new Date(createdAt);
   const now = new Date();
   const diffHours = (now - created) / (1000 * 60 * 60);
-  return diffHours < 24;
+  return diffHours < 2;
 }
 
 export default function AdminPage() {
@@ -394,9 +394,22 @@ export default function AdminPage() {
 
   const handleUnparkItemLocal = (item) => {
     const newParked = parkedItems.filter(p => p.id !== item.id);
-    const newActive = [...activeItems, item];
+    let newActive;
+    if (sortingMode === 'manual') {
+      // In manual mode: place the unparked item at position 1 (first),
+      // shifting all existing active items up by 1.
+      const shifted = activeItems.map(a => ({
+        ...a,
+        custom_order: (a.custom_order ?? 999999) + 1
+      }));
+      const unparkWithOrder = { ...item, custom_order: 1 };
+      newActive = sortArtworks([unparkWithOrder, ...shifted], 'manual');
+    } else {
+      // In chromatic mode: insert in correct color position
+      newActive = sortArtworks([...activeItems, item], sortingMode);
+    }
     setParkedItems(newParked);
-    setActiveItems(sortArtworks(newActive, sortingMode));
+    setActiveItems(newActive);
     setIsDirty(true);
   };
 
@@ -644,6 +657,29 @@ export default function AdminPage() {
             throw new Error(resData.error || 'Upload failed.');
           }
 
+          // Immediately inject the newly uploaded item into local state
+          // so the gallery list updates without waiting for a full DB reload.
+          if (resData.item) {
+            const newItem = resData.item;
+            if (shouldPark) {
+              setParkedItems(prev => sortArtworks([...prev, newItem], 'chromatic_asc'));
+            } else {
+              if (sortingMode === 'manual') {
+                // Place at position 1, shift everything else
+                setActiveItems(prev => {
+                  const shifted = prev.map(a => ({
+                    ...a,
+                    custom_order: (a.custom_order ?? 999999) + 1
+                  }));
+                  const newWithOrder = { ...newItem, custom_order: 1 };
+                  return sortArtworks([newWithOrder, ...shifted], 'manual');
+                });
+              } else {
+                setActiveItems(prev => sortArtworks([...prev, newItem], sortingMode));
+              }
+            }
+          }
+
           setUploadSuccess(true);
           setSelectedFile(null);
           setPreviewUrl('');
@@ -651,6 +687,7 @@ export default function AdminPage() {
           setCustomTitle('');
           setIsUploading(false);
           setUploadStep('');
+          // Also do a full reload in the background to sync any server-side changes
           loadGalleryItems();
         } catch (uploadErr) {
           console.error(uploadErr);

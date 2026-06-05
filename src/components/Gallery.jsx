@@ -9,7 +9,7 @@ function isNew(createdAt) {
   const created = new Date(createdAt);
   const now = new Date();
   const diffHours = (now - created) / (1000 * 60 * 60);
-  return diffHours < 24;
+  return diffHours < 2;
 }
 
 // Artworks sorted by color analysis (Hue-based) with their aspect ratios

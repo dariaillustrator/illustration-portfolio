@@ -82,7 +82,8 @@ export default async function handler(req, res) {
       const { data: items, error: fetchError } = await supabase
         .from('gallery_items')
         .select('id, custom_order')
-        .neq('title', '__site_settings__');
+        .neq('title', '__site_settings__')
+        .eq('is_parked', false);
         
       if (!fetchError && items) {
         // Shift custom_orders by 1
