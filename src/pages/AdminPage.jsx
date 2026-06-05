@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Lock, CheckCircle, AlertCircle, 
   Loader2, Sparkles, LogOut, X, Image as ImageIcon, ChevronRight,
-  RefreshCw, GripVertical, ArrowUpDown, Save
+  RefreshCw, GripVertical, Save
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -186,12 +186,14 @@ export default function AdminPage() {
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [sortingMode, setSortingMode] = useState('chromatic_asc'); // 'chromatic_asc', 'chromatic_desc', 'manual'
   const [isDirty, setIsDirty] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Drag-to-reorder state
-  const [dragIndex, setDragIndex] = useState(null);
-  const [dragOverIndex, setDragOverIndex] = useState(null);
-  const dragNode = useRef(null);
+  // Pointer-based drag-to-reorder state
+  const [dragFromIdx, setDragFromIdx] = useState(null);
+  const [ghostInfo, setGhostInfo] = useState(null);
+  const dragFromRef = useRef(null);
+  const cardEls = useRef({});
+  const autoScrollSpeedRef = useRef(0);
+  const autoScrollRafRef = useRef(null);
   const [copiedColor, setCopiedColor] = useState('');
 
   // Feature request states
@@ -302,52 +304,134 @@ export default function AdminPage() {
     }
   };
 
-  // Drag-to-reorder handlers (only active in manual mode)
-  const handleDragStart = useCallback((e, index) => {
-    if (sortingMode !== 'manual') return;
-    setDragIndex(index);
-    dragNode.current = e.currentTarget;
-    e.dataTransfer.effectAllowed = 'move';
-    // Minimal ghost image
-    const ghost = document.createElement('div');
-    ghost.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:120px;height:40px;background:var(--text-primary);color:var(--bg-primary);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:600;padding:0 1rem;font-family:var(--font-main)';
-    ghost.textContent = 'Moving...';
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 60, 20);
-    setTimeout(() => document.body.removeChild(ghost), 0);
-  }, [sortingMode]);
-
-  const handleDragEnter = useCallback((index) => {
-    if (dragIndex === null || dragIndex === index) return;
-    setDragOverIndex(index);
-    setActiveItems(prev => {
-      const updated = [...prev];
-      const [moved] = updated.splice(dragIndex, 1);
-      updated.splice(index, 0, moved);
-      setDragIndex(index);
-      return updated;
-    });
-  }, [dragIndex]);
-
-  const handleDragEnd = useCallback(() => {
-    setDragIndex(null);
-    setDragOverIndex(null);
-    setSortingMode('manual');
-    setIsDirty(true);
+  // Auto-scroll helpers (used during pointer drag)
+  const startAutoScrollLoop = useCallback(() => {
+    if (autoScrollRafRef.current) return;
+    const tick = () => {
+      const spd = autoScrollSpeedRef.current;
+      if (spd !== 0) {
+        window.scrollBy(0, spd);
+        autoScrollRafRef.current = requestAnimationFrame(tick);
+      } else {
+        autoScrollRafRef.current = null;
+      }
+    };
+    autoScrollRafRef.current = requestAnimationFrame(tick);
   }, []);
 
-  const handleModeSwitch = (newMode) => {
-    if (newMode === sortingMode) return;
-    if (newMode === 'manual') {
-      // Entering manual: keep current visual order, assign custom_order
+  const stopAutoScroll = useCallback(() => {
+    autoScrollSpeedRef.current = 0;
+    if (autoScrollRafRef.current) {
+      cancelAnimationFrame(autoScrollRafRef.current);
+      autoScrollRafRef.current = null;
+    }
+  }, []);
+
+  // Pointer-based drag-to-reorder (manual mode only)
+  const handleDragHandlePointerDown = (e, index) => {
+    if (sortingMode !== 'manual') return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const card = cardEls.current[index];
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+
+    dragFromRef.current = index;
+    setDragFromIdx(index);
+    setGhostInfo({
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height,
+      offsetX,
+      offsetY,
+      src: activeItems[index]?.src,
+      title: activeItems[index]?.title
+    });
+
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'grabbing';
+
+    const SCROLL_ZONE = 100;
+    const MAX_SPEED = 12;
+
+    const onMove = (moveE) => {
+      const cx = moveE.clientX;
+      const cy = moveE.clientY;
+
+      // Move ghost
+      setGhostInfo(prev => prev ? { ...prev, x: cx - prev.offsetX, y: cy - prev.offsetY } : null);
+
+      // Auto-scroll near viewport edges
+      if (cy < SCROLL_ZONE) {
+        autoScrollSpeedRef.current = -Math.max(1, Math.round(MAX_SPEED * (1 - cy / SCROLL_ZONE)));
+        startAutoScrollLoop();
+      } else if (cy > window.innerHeight - SCROLL_ZONE) {
+        const excess = cy - (window.innerHeight - SCROLL_ZONE);
+        autoScrollSpeedRef.current = Math.max(1, Math.round(MAX_SPEED * excess / SCROLL_ZONE));
+        startAutoScrollLoop();
+      } else {
+        autoScrollSpeedRef.current = 0;
+      }
+
+      // Find closest card by center-to-cursor distance
+      let closest = { idx: dragFromRef.current, dist: Infinity };
+      Object.entries(cardEls.current).forEach(([idxStr, el]) => {
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        const ecx = r.left + r.width / 2;
+        const ecy = r.top + r.height / 2;
+        const d = Math.hypot(cx - ecx, cy - ecy);
+        if (d < closest.dist) closest = { idx: parseInt(idxStr), dist: d };
+      });
+
+      const newIdx = closest.idx;
+      if (newIdx !== dragFromRef.current) {
+        const fromIdx = dragFromRef.current;
+        dragFromRef.current = newIdx;
+        setActiveItems(prev => {
+          const updated = [...prev];
+          const [moved] = updated.splice(fromIdx, 1);
+          updated.splice(newIdx, 0, moved);
+          return updated;
+        });
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      dragFromRef.current = null;
+      setDragFromIdx(null);
+      setGhostInfo(null);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      stopAutoScroll();
+      setSortingMode('manual');
+      setIsDirty(true);
+    };
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  };
+
+  // 2-button sort: "Color" (clicks toggle ↑↓) and "Manual"
+  const handleModeSwitch = (btn) => {
+    if (btn === 'color') {
+      // Cycle: asc → desc → asc; manual → asc
+      const nextMode = sortingMode === 'chromatic_asc' ? 'chromatic_desc'
+        : sortingMode === 'chromatic_desc' ? 'chromatic_asc'
+        : 'chromatic_asc';
+      setSortingMode(nextMode);
+      setActiveItems(prev => sortArtworks(prev, nextMode));
+      setIsDirty(true);
+    } else if (btn === 'manual') {
+      if (sortingMode === 'manual') return;
       setSortingMode('manual');
       setActiveItems(prev => prev.map((item, i) => ({ ...item, custom_order: i + 1 })));
-      setIsDirty(true);
-    } else {
-      // Switching to a chromatic mode
-      const sorted = sortArtworks(activeItems, newMode);
-      setSortingMode(newMode);
-      setActiveItems(sorted);
       setIsDirty(true);
     }
   };
@@ -1498,15 +1582,24 @@ export default function AdminPage() {
           cursor: grabbing;
         }
 
-        .admin-item-card.dragging {
-          opacity: 0.4;
-          transform: scale(0.98);
-          border-style: dashed;
+        /* Ghost card that follows cursor during drag */
+        .drag-ghost {
+          position: fixed;
+          pointer-events: none;
+          z-index: 99999;
+          border-radius: var(--radius-md);
+          overflow: hidden;
+          box-shadow: 0 28px 70px rgba(0,0,0,0.55), 0 0 0 2px rgba(255,255,255,0.18);
+          transform: rotate(-2.5deg) scale(1.06);
+          will-change: left, top;
         }
 
-        .admin-item-card.drag-over {
-          border-color: var(--text-primary);
-          box-shadow: 0 0 0 2px rgba(var(--text-primary-rgb), 0.15);
+        /* Source slot: invisible but keeps grid space */
+        .admin-item-card.is-dragging-source {
+          opacity: 0 !important;
+          pointer-events: none;
+          box-shadow: none;
+          border-style: dashed;
         }
 
         /* ── Order number badge (manual) ── */
@@ -2389,43 +2482,34 @@ export default function AdminPage() {
                 </h3>
               </div>
 
-              {/* Segmented sort pill */}
+              {/* 2-button sort pill */}
               <div className="sort-mode-bar">
                 <span className="sort-mode-label">Display order</span>
-                {(() => {
-                  const modes = [
-                    { key: 'chromatic_asc', label: 'Color ↑' },
-                    { key: 'chromatic_desc', label: 'Color ↓' },
-                    { key: 'manual', label: 'Manual' }
-                  ];
-                  const activeIdx = modes.findIndex(m => m.key === sortingMode);
-                  // Compute pill indicator width & left per button
-                  // Each btn is roughly 1/3 of pill
-                  return (
-                    <div className="sort-pill" id="sort-pill-container">
-                      {/* Animated sliding indicator — width/left set inline via JS */}
-                      <motion.div
-                        className="sort-pill-indicator"
-                        layout
-                        layoutId="sort-pill-indicator"
-                        style={{ width: `calc((100% - 8px) / 3)` }}
-                        animate={{ x: `calc(${activeIdx} * 100%)` }}
-                        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                      />
-                      {modes.map((mode) => (
-                        <button
-                          key={mode.key}
-                          className={`sort-pill-btn ${sortingMode === mode.key ? 'active' : ''}`}
-                          onClick={() => handleModeSwitch(mode.key)}
-                        >
-                          {mode.key === 'manual' && <GripVertical size={13} />}
-                          {mode.key !== 'manual' && <ArrowUpDown size={13} />}
-                          {mode.label}
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })()}
+                <div className="sort-pill">
+                  <motion.div
+                    className="sort-pill-indicator"
+                    style={{ width: 'calc((100% - 8px) / 2)' }}
+                    animate={{ x: sortingMode === 'manual' ? '100%' : '0%' }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  />
+                  <button
+                    className={`sort-pill-btn ${sortingMode !== 'manual' ? 'active' : ''}`}
+                    onClick={() => handleModeSwitch('color')}
+                    title="Click to toggle sort direction"
+                  >
+                    <span style={{ fontSize: '1em', lineHeight: 1 }}>
+                      {sortingMode === 'chromatic_desc' ? '↓' : '↑'}
+                    </span>
+                    Color
+                  </button>
+                  <button
+                    className={`sort-pill-btn ${sortingMode === 'manual' ? 'active' : ''}`}
+                    onClick={() => handleModeSwitch('manual')}
+                  >
+                    <GripVertical size={13} />
+                    Manual
+                  </button>
+                </div>
               </div>
 
               {isLoadingItems ? (
@@ -2437,18 +2521,15 @@ export default function AdminPage() {
               ) : (
                 <div className="admin-gallery-grid">
                   {activeItems.map((item, index) => (
-                    <div
+                    <motion.div
                       key={item.id}
-                      className={`admin-item-card ${
-                        dragIndex === index ? 'dragging' : ''
-                      } ${
-                        dragOverIndex === index && dragIndex !== index ? 'drag-over' : ''
-                      }`}
-                      draggable={sortingMode === 'manual'}
-                      onDragStart={(e) => handleDragStart(e, index)}
-                      onDragEnter={() => handleDragEnter(index)}
-                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                      onDragEnd={handleDragEnd}
+                      layout
+                      transition={{ type: 'spring', stiffness: 500, damping: 40, mass: 0.5 }}
+                      ref={el => {
+                        if (el) cardEls.current[index] = el;
+                        else delete cardEls.current[index];
+                      }}
+                      className={`admin-item-card ${ghostInfo && dragFromRef.current === index ? 'is-dragging-source' : ''}`}
                     >
                       {isNew(item.created_at) && (
                         <div className="new-badge">
@@ -2476,7 +2557,7 @@ export default function AdminPage() {
                         Not sure yet
                       </button>
 
-                      {/* Order badge (bottom-right, always visible in manual mode) */}
+                      {/* Order badge (bottom-right, manual mode only) */}
                       {sortingMode === 'manual' && (
                         <span className="order-badge">#{index + 1}</span>
                       )}
@@ -2502,18 +2583,19 @@ export default function AdminPage() {
                           <span>Ratio: {item.aspect_ratio.toFixed(2)}</span>
                         </div>
 
-                        {/* Drag handle — only visible in manual mode */}
+                        {/* Drag handle — pointer-down triggers drag */}
                         {sortingMode === 'manual' && (
                           <div
                             className="admin-item-drag-handle"
-                            title="Drag to reorder"
+                            title="Hold and drag to reorder"
+                            onPointerDown={(e) => handleDragHandlePointerDown(e, index)}
                           >
                             <GripVertical size={14} />
-                            drag to reorder
+                            hold &amp; drag to reorder
                           </div>
                         )}
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               )}
@@ -2617,6 +2699,24 @@ export default function AdminPage() {
         )}
       </AnimatePresence>
 
+      {/* Drag ghost — fixed-position card clone following cursor */}
+      {ghostInfo && (
+        <div
+          className="drag-ghost"
+          style={{
+            left: ghostInfo.x,
+            top: ghostInfo.y,
+            width: ghostInfo.width,
+          }}
+        >
+          <img
+            src={ghostInfo.src}
+            alt={ghostInfo.title}
+            style={{ width: '100%', display: 'block', aspectRatio: '1', objectFit: 'cover' }}
+          />
+        </div>
+      )}
+
       {/* Floating sticky save bar — appears whenever there are unsaved changes */}
       <AnimatePresence>
         {isDirty && isAuthenticated && (
@@ -2686,35 +2786,6 @@ export default function AdminPage() {
         )}
       </AnimatePresence>
 
-      {/* Custom Reset Confirm Modal */}
-      <AnimatePresence>
-        {showResetConfirm && (
-          <div className="confirm-modal-overlay">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="confirm-modal-card"
-            >
-              <div className="confirm-modal-icon-wrapper">
-                <RefreshCw size={24} />
-              </div>
-              <h4 className="confirm-modal-title">Reset Color Order?</h4>
-              <p className="confirm-modal-desc">
-                Are you sure? This action will reset eventual manual positioning that you already applied.
-              </p>
-              <div className="confirm-modal-actions">
-                <button onClick={handleConfirmReset} className="btn-confirm danger">
-                  Confirm Reset
-                </button>
-                <button onClick={() => setShowResetConfirm(false)} className="btn-confirm cancel">
-                  Cancel
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
