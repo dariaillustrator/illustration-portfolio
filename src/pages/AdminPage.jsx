@@ -1512,7 +1512,7 @@ export default function AdminPage() {
         /* ── Park overlay button (on hover) ── */
         .park-overlay-btn {
           position: absolute;
-          bottom: 0.8rem;
+          top: 0.8rem;
           left: 0.8rem;
           background: rgba(0,0,0,0.75);
           backdrop-filter: blur(6px);
