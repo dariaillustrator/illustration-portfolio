@@ -2550,7 +2550,7 @@ export default function AdminPage() {
               </div>
 
               {/* Preview & Metadata Section */}
-              <div className="glass-panel preview-card" style={{ background: 'rgba(0,0,0,0.15)' }}>
+              <div className="preview-card" style={{ background: 'transparent', border: '3px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
                 <div className="preview-image-container">
                   {previewUrl ? (
                     <img src={previewUrl} alt="Preview" className="preview-img" />
