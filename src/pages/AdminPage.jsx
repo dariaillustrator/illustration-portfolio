@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Lock, CheckCircle, AlertCircle, 
   Loader2, Sparkles, LogOut, X, Image as ImageIcon, ChevronRight,
-  RefreshCw, ChevronLeft, Save, Download
+  RefreshCw, ChevronLeft, Save, Download, Archive, Info
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 // Helper to convert RGB to HSL in range [0, 1]
 function rgbToHsl(r, g, b) {
@@ -328,7 +330,7 @@ export default function AdminPage() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
                   },
-                  body: JSON.stringify({ id: item.id, src: item.src })
+                  body: JSON.stringify({ id: item.id, src: item.src, skipDbDelete: true })
                 });
                 trashNeedsCleanup = true;
               } catch (delErr) {
@@ -504,7 +506,7 @@ export default function AdminPage() {
   };
 
   const handleDeleteRequest = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this request?")) return;
+    showConfirm("Are you sure you want to delete this request?", async () => {
     try {
       const response = await fetch('/api/admin-action', {
         method: 'POST',
@@ -526,8 +528,9 @@ export default function AdminPage() {
       await loadRequests();
     } catch (err) {
       console.error("Failed to delete request:", err.message);
-      setErrorMsg(`Failed to delete request: ${err.message}`);
+      showToast(`Failed to delete request: ${err.message}`, 'error', 5000);
     }
+    });
   };
 
   const handleRequestSubmit = async (e) => {
@@ -804,31 +807,35 @@ export default function AdminPage() {
   };
 
   const handleDelete = async (item) => {
-    if (!window.confirm("Are you sure you want to move this artwork to the Trash? It will be removed from the public website but can be restored for 30 days.")) return;
+    showConfirm(
+      "Are you sure you want to move this artwork to the Trash? It will be removed from the public website but can be restored for 30 days.",
+      async () => {
+        try {
+          const response = await fetch('/api/admin-action', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+            },
+            body: JSON.stringify({
+              action: 'move_to_trash',
+              payload: { itemId: item.id, trashItems: trashItems }
+            })
+          });
 
-    try {
-      const response = await fetch('/api/admin-action', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
-        },
-        body: JSON.stringify({
-          action: 'move_to_trash',
-          payload: { itemId: item.id, trashItems: trashItems }
-        })
-      });
+          if (!response.ok) {
+            const resData = await response.json();
+            throw new Error(resData.error || 'Failed to move to trash.');
+          }
 
-      if (!response.ok) {
-        const resData = await response.json();
-        throw new Error(resData.error || 'Failed to move to trash.');
+          showToast('Artwork moved to trash successfully', 'success');
+          await loadGalleryItems();
+        } catch (err) {
+          console.error(err);
+          showToast(`Failed to delete item: ${err.message}`, 'error', 6000);
+        }
       }
-
-      await loadGalleryItems();
-    } catch (err) {
-      console.error(err);
-      alert(`Failed to delete item: ${err.message}`);
-    }
+    );
   };
 
   const handleRestore = async (item, shouldPark = false) => {
@@ -857,10 +864,11 @@ export default function AdminPage() {
         throw new Error(resData.error || 'Failed to restore.');
       }
 
+      showToast(shouldPark ? 'Artwork restored to "Not Sure Yet"' : 'Artwork restored to gallery!', 'success');
       await loadGalleryItems();
     } catch (err) {
       console.error(err);
-      alert(`Failed to restore item: ${err.message}`);
+      showToast(`Failed to restore item: ${err.message}`, 'error', 6000);
     }
   };
 
@@ -884,31 +892,84 @@ export default function AdminPage() {
       const isDashboardUpload = /^\d+_[a-z0-9]+/.test(filename);
 
       let downloadUrl = item.src;
-      let downloadName = filename;
+      let downloadName = item.title ? `${item.title}.${originalExt}` : filename;
 
       if (isDashboardUpload) {
         try {
           const res = await fetch(originalUrl, { method: 'HEAD' });
           if (res.ok) {
             downloadUrl = originalUrl;
-            downloadName = originalFilename;
+            downloadName = item.title ? `${item.title}_original.${originalExt}` : originalFilename;
           }
         } catch (err) {
           console.warn("Could not verify original image existence, falling back to optimized", err);
         }
       }
       
-      // Trigger download
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = downloadName;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Fetch blob and trigger real download (works cross-origin and on all devices)
+      showToast('Starting download...', 'info', 2000);
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      saveAs(blob, downloadName);
+      showToast('Download complete!', 'success');
     } catch (e) {
       console.error("Failed to trigger download", e);
-      alert("Could not download the image.");
+      showToast('Could not download the image. Please try again.', 'error', 5000);
+    }
+  };
+
+  const handleDownloadPortfolio = async () => {
+    if (isDownloadingPortfolio) return;
+    setIsDownloadingPortfolio(true);
+    setPortfolioDownloadProgress('Fetching file list...');
+
+    try {
+      // 1. Get list of all files from R2
+      const listRes = await fetch('/api/list-portfolio', {
+        headers: { 'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}` }
+      });
+
+      if (!listRes.ok) throw new Error('Failed to fetch file list');
+      const { files } = await listRes.json();
+
+      if (!files || files.length === 0) {
+        showToast('No files found in the portfolio.', 'error');
+        setIsDownloadingPortfolio(false);
+        return;
+      }
+
+      // 2. Create ZIP
+      const zip = new JSZip();
+      let downloaded = 0;
+
+      for (const file of files) {
+        try {
+          setPortfolioDownloadProgress(`Downloading ${downloaded + 1}/${files.length}: ${file.key}`);
+          const res = await fetch(file.url);
+          if (res.ok) {
+            const blob = await res.blob();
+            zip.file(file.key, blob);
+          }
+          downloaded++;
+        } catch (err) {
+          console.warn(`Skipping ${file.key}:`, err);
+          downloaded++;
+        }
+      }
+
+      // 3. Generate and download ZIP
+      setPortfolioDownloadProgress('Compressing files...');
+      const content = await zip.generateAsync({ type: 'blob' });
+      const date = new Date().toISOString().split('T')[0];
+      saveAs(content, `daria-portfolio-${date}.zip`);
+      showToast(`Portfolio downloaded! ${downloaded} files.`, 'success', 5000);
+    } catch (err) {
+      console.error('Portfolio download failed:', err);
+      showToast(`Portfolio download failed: ${err.message}`, 'error', 6000);
+    } finally {
+      setIsDownloadingPortfolio(false);
+      setPortfolioDownloadProgress('');
     }
   };
 
@@ -2332,6 +2393,34 @@ export default function AdminPage() {
                     <span>{storageUsedGB} GB / 10 GB</span>
                   </div>
                 )}
+                <button 
+                  onClick={handleDownloadPortfolio} 
+                  disabled={isDownloadingPortfolio}
+                  title="Download entire portfolio as ZIP"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.5rem 1rem', borderRadius: '8px',
+                    background: isDownloadingPortfolio ? 'rgba(100,100,100,0.15)' : 'rgba(59, 130, 246, 0.1)',
+                    color: isDownloadingPortfolio ? 'var(--text-secondary)' : '#3b82f6',
+                    border: '1px solid ' + (isDownloadingPortfolio ? 'var(--glass-border)' : 'rgba(59, 130, 246, 0.2)'),
+                    cursor: isDownloadingPortfolio ? 'wait' : 'pointer',
+                    fontSize: '0.82rem', fontWeight: 600,
+                    fontFamily: 'var(--font-main)',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {isDownloadingPortfolio ? (
+                    <>
+                      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                      <span style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{portfolioDownloadProgress || 'Preparing...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Archive size={14} />
+                      Download All
+                    </>
+                  )}
+                </button>
                 <button onClick={handleLogout} className="logout-btn">
                   <LogOut size={16} />
                   Sign Out
@@ -2928,6 +3017,149 @@ export default function AdminPage() {
           >
             <CheckCircle size={16} />
             <span>Copied {copiedColor} to clipboard!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================== TOAST NOTIFICATIONS ==================== */}
+      <div style={{
+        position: 'fixed',
+        top: '1.5rem',
+        right: '1.5rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.6rem',
+        zIndex: 10001,
+        pointerEvents: 'none',
+        maxWidth: '420px',
+        width: '100%'
+      }}>
+        <AnimatePresence>
+          {toasts.map((toast) => {
+            const colors = {
+              success: { bg: 'rgba(16, 185, 129, 0.95)', icon: <CheckCircle size={18} />, border: 'rgba(16, 185, 129, 0.3)' },
+              error: { bg: 'rgba(239, 68, 68, 0.95)', icon: <AlertCircle size={18} />, border: 'rgba(239, 68, 68, 0.3)' },
+              info: { bg: 'rgba(59, 130, 246, 0.95)', icon: <Info size={18} />, border: 'rgba(59, 130, 246, 0.3)' }
+            };
+            const c = colors[toast.type] || colors.info;
+            return (
+              <motion.div
+                key={toast.id}
+                initial={{ opacity: 0, x: 80, scale: 0.9 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: 80, scale: 0.9 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                style={{
+                  background: c.bg,
+                  backdropFilter: 'blur(16px)',
+                  color: '#fff',
+                  padding: '0.85rem 1.2rem',
+                  borderRadius: '12px',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                  border: `1px solid ${c.border}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  fontFamily: 'var(--font-main)',
+                  fontSize: '0.88rem',
+                  fontWeight: '500',
+                  pointerEvents: 'auto',
+                  cursor: 'pointer'
+                }}
+                onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+              >
+                {c.icon}
+                <span style={{ flex: 1, lineHeight: 1.4 }}>{toast.message}</span>
+                <X size={14} style={{ opacity: 0.6, flexShrink: 0 }} />
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
+
+      {/* ==================== CONFIRM DIALOG ==================== */}
+      <AnimatePresence>
+        {confirmDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0, 0, 0, 0.5)',
+              backdropFilter: 'blur(6px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10002,
+              padding: '1rem'
+            }}
+            onClick={handleConfirmNo}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'var(--bg-primary)',
+                border: '1px solid var(--glass-border)',
+                borderRadius: '16px',
+                padding: '2rem',
+                maxWidth: '420px',
+                width: '100%',
+                boxShadow: '0 24px 48px rgba(0, 0, 0, 0.15)',
+                fontFamily: 'var(--font-main)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{ padding: '0.5rem', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '10px', flexShrink: 0 }}>
+                  <AlertCircle size={22} style={{ color: '#f59e0b' }} />
+                </div>
+                <p style={{ fontSize: '0.95rem', lineHeight: 1.6, color: 'var(--text-primary)', margin: 0 }}>
+                  {confirmDialog.message}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.8rem', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={handleConfirmNo}
+                  style={{
+                    padding: '0.6rem 1.3rem',
+                    borderRadius: '8px',
+                    background: 'transparent',
+                    border: '1px solid var(--glass-border)',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '0.88rem',
+                    fontWeight: 500,
+                    fontFamily: 'var(--font-main)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmYes}
+                  style={{
+                    padding: '0.6rem 1.3rem',
+                    borderRadius: '8px',
+                    background: '#ef4444',
+                    border: 'none',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '0.88rem',
+                    fontWeight: 600,
+                    fontFamily: 'var(--font-main)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  Confirm
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Content-Type must be application/json' });
   }
 
-  const { id, src } = req.body;
+  const { id, src, skipDbDelete } = req.body;
 
   if (!id || !src) {
     return res.status(400).json({ error: 'Missing required parameters' });
@@ -52,15 +52,19 @@ export default async function handler(req, res) {
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 1. Delete from Supabase Database
-    console.log(`Deleting database record ${id} from Supabase...`);
-    const { error: dbError } = await supabase
-      .from('gallery_items')
-      .delete()
-      .eq('id', id);
+    // 1. Delete from Supabase Database (unless skipped for trash cleanup)
+    if (!skipDbDelete) {
+      console.log(`Deleting database record ${id} from Supabase...`);
+      const { error: dbError } = await supabase
+        .from('gallery_items')
+        .delete()
+        .eq('id', id);
 
-    if (dbError) {
-      throw new Error(`Supabase Database delete failed: ${dbError.message}`);
+      if (dbError) {
+        throw new Error(`Supabase Database delete failed: ${dbError.message}`);
+      }
+    } else {
+      console.log(`Skipping DB deletion for ${id} (trash cleanup mode).`);
     }
 
     // 2. Delete from Cloudflare R2

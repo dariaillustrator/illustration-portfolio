@@ -126,7 +126,11 @@ export default async function handler(req, res) {
             .insert([{
               title: '__site_trash__',
               src: JSON.stringify(newTrashList),
-              is_parked: true
+              is_parked: true,
+              aspect_ratio: 0,
+              hue: 0,
+              saturation: 0,
+              lightness: 0
             }]);
           if (insertError) throw insertError;
         }
