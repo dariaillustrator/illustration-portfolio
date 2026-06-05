@@ -166,6 +166,49 @@ export default function SiteHeader() {
     }
   };
 
+  const isAdminPage = location.pathname === '/admin';
+
+  if (isAdminPage) {
+    return (
+      <header 
+        className="site-header"
+        style={{ 
+          opacity: 1,
+          transform: 'translateX(-50%) translateY(0)',
+          height: '52px',
+          width: '700px',
+          maxWidth: '95vw',
+          background: 'var(--glass-bg)',
+          backdropFilter: 'saturate(200%) blur(30px)',
+          WebkitBackdropFilter: 'saturate(200%) blur(30px)',
+          borderRadius: '8px',
+          border: '1px solid var(--glass-border)',
+          boxShadow: '0 30px 60px rgba(0,0,0,0.15)',
+          zIndex: 1000,
+          position: 'fixed',
+          top: '1.5rem',
+          left: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'all'
+        }}
+      >
+        <span 
+          style={{ 
+            fontWeight: 500, 
+            letterSpacing: '0.15em', 
+            textTransform: 'uppercase',
+            fontSize: '0.9rem',
+            color: 'var(--text-primary)'
+          }}
+        >
+          AdminPortal
+        </span>
+      </header>
+    );
+  }
+
   return (
     <header 
       ref={headerRef}

@@ -44,6 +44,7 @@ export default function SiteFooter() {
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
   const navigate = useNavigate();
   const location = useLocation();
+  const isAdminPage = location.pathname === '/admin';
 
   const handleGalleryClick = (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -103,7 +104,7 @@ export default function SiteFooter() {
           </div>
 
           {/* Links Sections */}
-          {footerLinks.map((section, i) => (
+          {!isAdminPage && footerLinks.map((section, i) => (
             <div key={i}>
               <h4 style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1.5rem', opacity: 0.4 }}>{section.title}</h4>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
