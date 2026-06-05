@@ -4,13 +4,6 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
-function isNew(createdAt) {
-  if (!createdAt) return false;
-  const created = new Date(createdAt);
-  const now = new Date();
-  const diffHours = (now - created) / (1000 * 60 * 60);
-  return diffHours < 2;
-}
 
 // Artworks sorted by color analysis (Hue-based) with their aspect ratios
 const galleryFiles = [
@@ -526,12 +519,7 @@ export default function Gallery() {
                   }}
                 >
                   <div className="gallery-item">
-                    {isNew(art.created_at) && (
-                      <div className="new-badge">
-                        <span className="new-dot"></span>
-                        New
-                      </div>
-                    )}
+
                     <motion.img 
                       src={art.imgUrl}
                       alt={art.title}
