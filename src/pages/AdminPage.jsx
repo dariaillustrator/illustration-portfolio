@@ -2704,23 +2704,23 @@ export default function AdminPage() {
           justify-content: space-between;
           gap: 2rem;
           padding: 0.8rem 2rem;
-          background: rgba(17, 17, 17, 0.85);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: var(--glass-bg);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border: 1px solid var(--glass-border);
           border-radius: 100px;
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
           z-index: 1000;
-          color: white;
+          color: var(--text-primary);
           width: auto;
           max-width: 90vw;
         }
 
         .floating-bulk-info {
           font-family: var(--font-main);
-          font-size: 0.9rem;
-          font-weight: 500;
-          color: rgba(255, 255, 255, 0.9);
+          font-size: 0.95rem;
+          font-weight: 600;
+          color: var(--text-primary);
           white-space: nowrap;
         }
 
@@ -2736,19 +2736,19 @@ export default function AdminPage() {
           gap: 0.4rem;
           padding: 0.5rem 1rem;
           border-radius: 50px;
-          background: rgba(255, 255, 255, 0.08);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          color: white;
+          background: rgba(var(--text-primary-rgb), 0.05);
+          border: 1px solid var(--glass-border);
+          color: var(--text-primary);
           cursor: pointer;
-          font-size: 0.8rem;
+          font-size: 0.82rem;
           font-weight: 600;
           font-family: var(--font-main);
           transition: all 0.2s ease;
         }
 
         .bulk-action-btn:hover:not(:disabled) {
-          background: rgba(255, 255, 255, 0.18);
-          border-color: rgba(255, 255, 255, 0.25);
+          background: rgba(var(--text-primary-rgb), 0.1);
+          border-color: rgba(var(--text-primary-rgb), 0.2);
           transform: translateY(-1px);
         }
 
@@ -2758,14 +2758,14 @@ export default function AdminPage() {
         }
 
         .bulk-action-btn.danger {
-          background: rgba(239, 68, 68, 0.15);
-          border-color: rgba(239, 68, 68, 0.25);
+          background: rgba(239, 68, 68, 0.08);
+          border-color: rgba(239, 68, 68, 0.2);
           color: #ef4444;
         }
 
         .bulk-action-btn.danger:hover:not(:disabled) {
-          background: rgba(239, 68, 68, 0.25);
-          border-color: rgba(239, 68, 68, 0.4);
+          background: rgba(239, 68, 68, 0.15);
+          border-color: rgba(239, 68, 68, 0.3);
         }
       `}</style>
 

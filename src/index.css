@@ -70,6 +70,7 @@
   --glass-border: rgba(246, 243, 236, 0.4);
   --card-bg: #f6f3ec;
   --bg-primary-rgb: 246, 243, 236;
+  --text-primary-rgb: 29, 29, 31;
   --bg-paper: #ece8de;
 }
 
@@ -93,6 +94,7 @@ body.dark-theme {
   --glass-border: rgba(255, 255, 255, 0.1);
   --card-bg: #1c1c1e;
   --bg-primary-rgb: 17, 17, 17;
+  --text-primary-rgb: 253, 253, 252;
   --bg-paper: #1c1c1e;
 }
 
