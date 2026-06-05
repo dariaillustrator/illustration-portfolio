@@ -211,6 +211,18 @@ export default function AdminPage() {
   // Selection states
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [isSharingBulk, setIsSharingBulk] = useState(false);
+  const [showShareDropdown, setShowShareDropdown] = useState(false);
+  const shareDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (shareDropdownRef.current && !shareDropdownRef.current.contains(e.target)) {
+        setShowShareDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Feature request states
   const [requestContent, setRequestContent] = useState('');
@@ -749,6 +761,23 @@ export default function AdminPage() {
     setErrorMsg('');
   };
 
+  useEffect(() => {
+    if (isAuthenticated) return;
+    const onKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (/^[0-9]$/.test(e.key)) {
+        handleKeyPress(e.key);
+      } else if (e.key === 'Backspace') {
+        handleBackspace();
+      } else if (e.key === 'Escape' || e.key.toLowerCase() === 'c') {
+        setPasscode('');
+        setErrorMsg('');
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isAuthenticated, passcode, isShaking]);
+
   const handleLogout = () => {
     sessionStorage.removeItem('admin_token');
     setIsAuthenticated(false);
@@ -1108,7 +1137,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleShareAll = async () => {
+  const handleShareAll = async (allowDownload = true) => {
     if (isSharingBulk) return;
     setIsSharingBulk(true);
     showToast('Generating shareable link for portfolio...', 'info', 2000);
@@ -1127,7 +1156,7 @@ export default function AdminPage() {
           payload: {
             token,
             item_ids: ["*"],
-            allow_download: true
+            allow_download: allowDownload
           }
         })
       });
@@ -1136,7 +1165,8 @@ export default function AdminPage() {
 
       const shareUrl = `${window.location.origin}/shared/${token}`;
       await navigator.clipboard.writeText(shareUrl);
-      showToast('Public link copied to clipboard! (Download enabled)', 'success', 5000);
+      const permText = allowDownload ? 'Download enabled' : 'View-only';
+      showToast(`Public link copied to clipboard! (${permText})`, 'success', 5000);
     } catch (err) {
       console.error('Failed to share portfolio:', err);
       showToast(`Failed to generate share link: ${err.message}`, 'error', 5000);
@@ -2056,7 +2086,7 @@ export default function AdminPage() {
         /* ── Park overlay button (on hover) ── */
         .park-overlay-btn {
           position: absolute;
-          top: 0.8rem;
+          bottom: 0.8rem;
           left: 0.8rem;
           background: rgba(0,0,0,0.75);
           backdrop-filter: blur(6px);
@@ -2814,34 +2844,72 @@ export default function AdminPage() {
                     <span>{storageUsedGB} GB / 10 GB</span>
                   </div>
                 )}
-                <button 
-                  onClick={handleShareAll} 
-                  disabled={isSharingBulk}
-                  title="Generate a public link for the entire portfolio and copy it to clipboard"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.4rem',
-                    padding: '0.5rem 1rem', borderRadius: '8px',
-                    background: isSharingBulk ? 'rgba(100,100,100,0.15)' : 'rgba(168, 85, 247, 0.1)',
-                    color: isSharingBulk ? 'var(--text-secondary)' : '#a855f7',
-                    border: '1px solid ' + (isSharingBulk ? 'var(--glass-border)' : 'rgba(168, 85, 247, 0.2)'),
-                    cursor: isSharingBulk ? 'wait' : 'pointer',
-                    fontSize: '0.82rem', fontWeight: 600,
-                    fontFamily: 'var(--font-main)',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  {isSharingBulk ? (
-                    <>
-                      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                      <span>Sharing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Share2 size={14} />
-                      Share All
-                    </>
-                  )}
-                </button>
+                <div style={{ position: 'relative' }} ref={shareDropdownRef}>
+                  <button 
+                    onClick={() => setShowShareDropdown(prev => !prev)} 
+                    disabled={isSharingBulk}
+                    title="Generate a public link for the entire portfolio"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.4rem',
+                      padding: '0.5rem 1rem', borderRadius: '8px',
+                      background: isSharingBulk ? 'rgba(100,100,100,0.15)' : 'rgba(168, 85, 247, 0.1)',
+                      color: isSharingBulk ? 'var(--text-secondary)' : '#a855f7',
+                      border: '1px solid ' + (isSharingBulk ? 'var(--glass-border)' : 'rgba(168, 85, 247, 0.2)'),
+                      cursor: isSharingBulk ? 'wait' : 'pointer',
+                      fontSize: '0.82rem', fontWeight: 600,
+                      fontFamily: 'var(--font-main)',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {isSharingBulk ? (
+                      <>
+                        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                        <span>Sharing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Share2 size={14} />
+                        Share All
+                      </>
+                    )}
+                  </button>
+                  <AnimatePresence>
+                    {showShareDropdown && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        style={{
+                          position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem',
+                          background: 'var(--glass-bg)', backdropFilter: 'blur(20px)',
+                          WebkitBackdropFilter: 'blur(20px)',
+                          border: '1px solid var(--glass-border)', borderRadius: '12px',
+                          padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem',
+                          minWidth: '200px', zIndex: 50, boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+                        }}
+                      >
+                        <button 
+                          onClick={() => { handleShareAll(true); setShowShareDropdown(false); }}
+                          style={{ justifyContent: 'flex-start', padding: '0.6rem 1rem', width: '100%', border: 'none', background: 'transparent', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', borderRadius: '8px', transition: 'background 0.2s', fontSize: '0.85rem' }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <Download size={14} />
+                          Share (Download)
+                        </button>
+                        <button 
+                          onClick={() => { handleShareAll(false); setShowShareDropdown(false); }}
+                          style={{ justifyContent: 'flex-start', padding: '0.6rem 1rem', width: '100%', border: 'none', background: 'transparent', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', borderRadius: '8px', transition: 'background 0.2s', fontSize: '0.85rem' }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <Eye size={14} />
+                          Share View-Only
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
                 <button 
                   onClick={handleDownloadPortfolio} 
                   disabled={isDownloadingPortfolio}

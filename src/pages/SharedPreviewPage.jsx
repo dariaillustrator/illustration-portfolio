@@ -521,7 +521,7 @@ export default function SharedPreviewPage() {
       {/* Shared Header block */}
       <div className="shared-header animate-fade-in">
         <div className="shared-title-group">
-          <h1>Daria Pavljenko</h1>
+          <h1 style={{ fontSize: '2.5rem' }}>Daria shared the following illustrations with you.</h1>
           <div className="shared-subtitle">
             <Sparkles size={14} style={{ color: '#a855f7' }} />
             <span>Shared Collection Preview ({artworks.length} items)</span>
@@ -728,6 +728,13 @@ export default function SharedPreviewPage() {
           </div>
         </div>
       )}
+
+      {/* Return Home Button */}
+      <div style={{ textAlign: 'center', marginTop: '4rem', marginBottom: '2rem' }}>
+        <Link to="/" className="request-submit-btn" style={{ textDecoration: 'none', display: 'inline-flex', padding: '0.8rem 2rem', fontSize: '1rem' }}>
+          Return Home
+        </Link>
+      </div>
     </div>
   );
 }
