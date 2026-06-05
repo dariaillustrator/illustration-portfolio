@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Lock, CheckCircle, AlertCircle, 
   Loader2, Sparkles, LogOut, X, Image as ImageIcon, ChevronRight,
-  ArrowLeft, ArrowRight, RefreshCw, Sliders
+  RefreshCw, GripVertical, ArrowUpDown, Save
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -187,6 +187,11 @@ export default function AdminPage() {
   const [sortingMode, setSortingMode] = useState('chromatic_asc'); // 'chromatic_asc', 'chromatic_desc', 'manual'
   const [isDirty, setIsDirty] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Drag-to-reorder state
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const dragNode = useRef(null);
   const [copiedColor, setCopiedColor] = useState('');
 
   // Feature request states
@@ -297,40 +302,54 @@ export default function AdminPage() {
     }
   };
 
-  const handleMove = (index, direction) => {
-    const newItems = [...activeItems];
-    const targetIndex = direction === 'left' ? index - 1 : index + 1;
-    
-    if (targetIndex < 0 || targetIndex >= newItems.length) return;
-    
-    const temp = newItems[index];
-    newItems[index] = newItems[targetIndex];
-    newItems[targetIndex] = temp;
-    
-    setActiveItems(newItems);
+  // Drag-to-reorder handlers (only active in manual mode)
+  const handleDragStart = useCallback((e, index) => {
+    if (sortingMode !== 'manual') return;
+    setDragIndex(index);
+    dragNode.current = e.currentTarget;
+    e.dataTransfer.effectAllowed = 'move';
+    // Minimal ghost image
+    const ghost = document.createElement('div');
+    ghost.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:120px;height:40px;background:var(--text-primary);color:var(--bg-primary);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:600;padding:0 1rem;font-family:var(--font-main)';
+    ghost.textContent = 'Moving...';
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 60, 20);
+    setTimeout(() => document.body.removeChild(ghost), 0);
+  }, [sortingMode]);
+
+  const handleDragEnter = useCallback((index) => {
+    if (dragIndex === null || dragIndex === index) return;
+    setDragOverIndex(index);
+    setActiveItems(prev => {
+      const updated = [...prev];
+      const [moved] = updated.splice(dragIndex, 1);
+      updated.splice(index, 0, moved);
+      setDragIndex(index);
+      return updated;
+    });
+  }, [dragIndex]);
+
+  const handleDragEnd = useCallback(() => {
+    setDragIndex(null);
+    setDragOverIndex(null);
     setSortingMode('manual');
     setIsDirty(true);
-  };
+  }, []);
 
-  const triggerResetOrder = () => {
-    setShowResetConfirm(true);
-  };
-
-  const handleConfirmReset = () => {
-    setShowResetConfirm(false);
-    
-    // Reset manual positioning locally to chromatic order
-    const sorted = sortArtworks(activeItems, 'chromatic_asc');
-    setActiveItems(sorted);
-    setSortingMode('chromatic_asc');
-    setIsDirty(true);
-  };
-
-  const handleInvertChromaticOrder = () => {
-    const nextMode = sortingMode === 'chromatic_desc' ? 'chromatic_asc' : 'chromatic_desc';
-    setSortingMode(nextMode);
-    setActiveItems(prev => sortArtworks(prev, nextMode));
-    setIsDirty(true);
+  const handleModeSwitch = (newMode) => {
+    if (newMode === sortingMode) return;
+    if (newMode === 'manual') {
+      // Entering manual: keep current visual order, assign custom_order
+      setSortingMode('manual');
+      setActiveItems(prev => prev.map((item, i) => ({ ...item, custom_order: i + 1 })));
+      setIsDirty(true);
+    } else {
+      // Switching to a chromatic mode
+      const sorted = sortArtworks(activeItems, newMode);
+      setSortingMode(newMode);
+      setActiveItems(sorted);
+      setIsDirty(true);
+    }
   };
 
   const handleSaveChanges = async () => {
@@ -1382,102 +1401,249 @@ export default function AdminPage() {
           transform: scale(1.1);
         }
 
-        .order-actions-row {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 1.2rem;
-          margin-top: 1.2rem;
-          margin-bottom: 2.5rem;
-        }
-
-        .admin-item-controls {
+        /* ── Sorting Mode Pill ── */
+        .sort-mode-bar {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-top: 0.8rem;
-          padding-top: 0.8rem;
-          border-top: 1px solid var(--border);
-          gap: 0.4rem;
+          margin-top: 1.2rem;
+          margin-bottom: 2.5rem;
+          flex-wrap: wrap;
+          gap: 1rem;
         }
 
-        .move-btn {
+        .sort-mode-label {
+          font-size: 0.8rem;
+          font-weight: 500;
+          color: var(--text-secondary);
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        .sort-pill {
+          display: flex;
+          align-items: center;
+          background: rgba(var(--bg-primary-rgb), 0.04);
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          padding: 4px;
+          gap: 2px;
+          position: relative;
+        }
+
+        .sort-pill-btn {
+          position: relative;
+          z-index: 2;
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          padding: 0.55rem 1.1rem;
+          font-size: 0.82rem;
+          font-weight: 600;
+          font-family: var(--font-main);
+          border: none;
+          background: transparent;
+          color: var(--text-secondary);
+          border-radius: 10px;
+          cursor: pointer;
+          transition: color 0.2s ease;
+          white-space: nowrap;
+        }
+
+        .sort-pill-btn:hover {
+          color: var(--text-primary);
+        }
+
+        .sort-pill-btn.active {
+          color: var(--bg-primary);
+        }
+
+        .sort-pill-indicator {
+          position: absolute;
+          top: 4px;
+          left: 4px;
+          height: calc(100% - 8px);
+          background: var(--text-primary);
+          border-radius: 10px;
+          transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+          z-index: 1;
+          pointer-events: none;
+        }
+
+        /* ── Drag handle ── */
+        .admin-item-drag-handle {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 0.2rem;
-          padding: 0.4rem 0.7rem;
-          font-size: 0.75rem;
-          font-weight: 600;
-          border-radius: 12px;
-          border: 1px solid var(--text-primary);
-          background: transparent;
-          color: var(--text-primary);
+          width: 100%;
+          padding: 0.6rem;
+          margin-top: 0.8rem;
+          border-top: 1px solid var(--border);
+          color: var(--text-secondary);
+          cursor: grab;
+          border-radius: 0 0 var(--radius-md) var(--radius-md);
           transition: all 0.2s ease;
-          cursor: pointer;
+          font-size: 0.75rem;
+          gap: 0.3rem;
+          font-weight: 500;
+          user-select: none;
         }
 
-        .move-btn:hover:not(:disabled) {
-          background: var(--text-primary);
-          color: var(--bg-primary);
+        .admin-item-drag-handle:hover {
+          color: var(--text-primary);
+          background: rgba(var(--text-primary-rgb), 0.04);
+        }
+
+        .admin-item-drag-handle:active {
+          cursor: grabbing;
+        }
+
+        .admin-item-card.dragging {
+          opacity: 0.4;
+          transform: scale(0.98);
+          border-style: dashed;
+        }
+
+        .admin-item-card.drag-over {
           border-color: var(--text-primary);
+          box-shadow: 0 0 0 2px rgba(var(--text-primary-rgb), 0.15);
         }
 
-        .move-btn:disabled {
-          opacity: 0.25;
-          cursor: not-allowed;
-        }
-
+        /* ── Order number badge (manual) ── */
         .order-badge {
-          font-size: 0.7rem;
+          position: absolute;
+          bottom: 0.7rem;
+          right: 0.7rem;
+          font-size: 0.65rem;
           font-weight: 700;
           color: var(--text-secondary);
-          background: rgba(var(--text-primary-rgb), 0.05);
-          padding: 0.2rem 0.4rem;
-          border-radius: 4px;
+          background: rgba(var(--text-primary-rgb), 0.06);
+          padding: 0.15rem 0.4rem;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          z-index: 3;
         }
 
-        .btn-action-order {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.6rem;
-          padding: 0.8rem 1.6rem;
-          font-family: var(--font-main);
-          font-size: 0.95rem;
+        /* ── Park overlay button (on hover) ── */
+        .park-overlay-btn {
+          position: absolute;
+          bottom: 0.8rem;
+          left: 0.8rem;
+          background: rgba(0,0,0,0.75);
+          backdrop-filter: blur(6px);
+          border: 1px solid rgba(255,255,255,0.12);
+          color: rgba(255,255,255,0.85);
+          font-size: 0.72rem;
           font-weight: 600;
-          color: var(--text-primary);
-          background: transparent;
-          border: 1px solid var(--text-primary);
-          border-radius: 12px;
+          padding: 0.35rem 0.7rem;
+          border-radius: 10px;
           cursor: pointer;
-          transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          gap: 0.3rem;
+          opacity: 0;
+          transform: translateY(4px);
+          transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          z-index: 5;
+          white-space: nowrap;
         }
 
-        .btn-action-order:hover {
-          background: rgba(var(--text-primary-rgb), 0.05);
-          transform: translateY(-2px);
-        }
-
-        .btn-action-order:active {
+        .admin-item-card:hover .park-overlay-btn {
+          opacity: 1;
           transform: translateY(0);
         }
 
-        .btn-action-order.active-toggle {
-          background: var(--text-primary);
-          color: var(--bg-primary);
-          border-color: var(--text-primary);
+        .park-overlay-btn:hover {
+          background: rgba(0,0,0,0.9);
+          color: #ffffff;
         }
 
-        .btn-action-order.save-changes-btn {
-          background: rgba(16, 185, 129, 0.1);
-          color: #10b981;
-          border-color: #10b981;
+        /* ── Floating sticky save bar ── */
+        .sticky-save-bar {
+          position: fixed;
+          bottom: 2rem;
+          left: 50%;
+          transform: translateX(-50%);
+          background: var(--glass-bg);
+          backdrop-filter: blur(30px) saturate(180%);
+          -webkit-backdrop-filter: blur(30px) saturate(180%);
+          border: 1px solid var(--glass-border);
+          border-radius: 20px;
+          padding: 0.8rem 1.2rem;
+          display: flex;
+          align-items: center;
+          gap: 1.2rem;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+          z-index: 9000;
+          font-family: var(--font-main);
         }
 
-        .btn-action-order.save-changes-btn:hover {
+        .sticky-save-mode-info {
+          font-size: 0.82rem;
+          color: var(--text-secondary);
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .sticky-save-mode-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #f59e0b;
+          box-shadow: 0 0 8px #f59e0b;
+          animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.6; transform: scale(0.85); }
+        }
+
+        .sticky-save-btn {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.65rem 1.4rem;
           background: #10b981;
-          color: var(--bg-primary);
-          border-color: #10b981;
-          transform: translateY(-2px);
+          color: #fff;
+          border: none;
+          border-radius: 14px;
+          font-size: 0.88rem;
+          font-weight: 700;
+          font-family: var(--font-main);
+          cursor: pointer;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+        }
+
+        .sticky-save-btn:hover {
+          background: #059669;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);
+        }
+
+        .sticky-discard-btn {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          padding: 0.65rem 1rem;
+          background: transparent;
+          color: var(--text-secondary);
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          font-size: 0.82rem;
+          font-weight: 600;
+          font-family: var(--font-main);
+          cursor: pointer;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+        }
+
+        .sticky-discard-btn:hover {
+          color: #ef4444;
+          border-color: rgba(239,68,68,0.3);
+          background: rgba(239,68,68,0.05);
         }
 
         /* Color Palette Section styles */
@@ -2215,39 +2381,51 @@ export default function AdminPage() {
 
             {/* List & Edit section */}
             <div className="list-section">
-              <div className="flex flex-col gap-4 mb-8">
+              {/* Section header + mode switcher */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: 0 }}>
                 <h3 className="section-header" style={{ marginBottom: 0 }}>
                   <ImageIcon size={22} />
-                  Active Portfolio Artworks ({activeItems.length})
+                  Active Portfolio ({activeItems.length})
                 </h3>
-                <div className="order-actions-row">
-                  <button 
-                    onClick={triggerResetOrder} 
-                    className="btn-action-order"
-                  >
-                    <RefreshCw size={14} />
-                    Reset to Color Order
-                  </button>
-                  <button 
-                    onClick={handleInvertChromaticOrder} 
-                    className={`btn-action-order ${sortingMode === 'chromatic_desc' ? 'active-toggle' : ''}`}
-                  >
-                    <Sliders style={{ transform: sortingMode === 'chromatic_desc' ? 'rotate(0deg)' : 'rotate(180deg)' }} size={14} />
-                    {sortingMode === 'chromatic_desc' ? 'Inverted Color Sorting' : 'Invert Color Sorting'}
-                  </button>
+              </div>
 
-                  {isDirty && (
-                    <motion.button 
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      onClick={handleSaveChanges}
-                      className="btn-action-order save-changes-btn"
-                    >
-                      <CheckCircle size={14} />
-                      Save New Order
-                    </motion.button>
-                  )}
-                </div>
+              {/* Segmented sort pill */}
+              <div className="sort-mode-bar">
+                <span className="sort-mode-label">Display order</span>
+                {(() => {
+                  const modes = [
+                    { key: 'chromatic_asc', label: 'Color ↑' },
+                    { key: 'chromatic_desc', label: 'Color ↓' },
+                    { key: 'manual', label: 'Manual' }
+                  ];
+                  const activeIdx = modes.findIndex(m => m.key === sortingMode);
+                  // Compute pill indicator width & left per button
+                  // Each btn is roughly 1/3 of pill
+                  return (
+                    <div className="sort-pill" id="sort-pill-container">
+                      {/* Animated sliding indicator — width/left set inline via JS */}
+                      <motion.div
+                        className="sort-pill-indicator"
+                        layout
+                        layoutId="sort-pill-indicator"
+                        style={{ width: `calc((100% - 8px) / 3)` }}
+                        animate={{ x: `calc(${activeIdx} * 100%)` }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                      />
+                      {modes.map((mode) => (
+                        <button
+                          key={mode.key}
+                          className={`sort-pill-btn ${sortingMode === mode.key ? 'active' : ''}`}
+                          onClick={() => handleModeSwitch(mode.key)}
+                        >
+                          {mode.key === 'manual' && <GripVertical size={13} />}
+                          {mode.key !== 'manual' && <ArrowUpDown size={13} />}
+                          {mode.label}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
 
               {isLoadingItems ? (
@@ -2259,13 +2437,27 @@ export default function AdminPage() {
               ) : (
                 <div className="admin-gallery-grid">
                   {activeItems.map((item, index) => (
-                    <div key={item.id} className="admin-item-card">
+                    <div
+                      key={item.id}
+                      className={`admin-item-card ${
+                        dragIndex === index ? 'dragging' : ''
+                      } ${
+                        dragOverIndex === index && dragIndex !== index ? 'drag-over' : ''
+                      }`}
+                      draggable={sortingMode === 'manual'}
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onDragEnter={() => handleDragEnter(index)}
+                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                      onDragEnd={handleDragEnd}
+                    >
                       {isNew(item.created_at) && (
                         <div className="new-badge">
                           <span className="new-dot"></span>
                           New
                         </div>
                       )}
+
+                      {/* Delete button (top-right, appears on hover) */}
                       <button 
                         onClick={() => handleDelete(item.id, item.src)}
                         className="delete-overlay-btn"
@@ -2273,9 +2465,26 @@ export default function AdminPage() {
                       >
                         <Trash2 size={16} />
                       </button>
+
+                      {/* Park button (bottom-left, appears on hover) */}
+                      <button
+                        onClick={() => handleParkItemLocal(index)}
+                        className="park-overlay-btn"
+                        title="Move to Not Sure Yet"
+                      >
+                        <Lock size={11} />
+                        Not sure yet
+                      </button>
+
+                      {/* Order badge (bottom-right, always visible in manual mode) */}
+                      {sortingMode === 'manual' && (
+                        <span className="order-badge">#{index + 1}</span>
+                      )}
+
                       <div className="admin-item-image-wrapper">
                         <img src={item.src} alt={item.title} className="admin-item-img" />
                       </div>
+
                       <div className="admin-item-details">
                         <div className="admin-item-title">{item.title}</div>
                         <div className="admin-item-meta">
@@ -2292,37 +2501,17 @@ export default function AdminPage() {
                           </div>
                           <span>Ratio: {item.aspect_ratio.toFixed(2)}</span>
                         </div>
-                        
-                        <div className="admin-item-controls">
-                          <button 
-                            disabled={index === 0} 
-                            onClick={() => handleMove(index, 'left')}
-                            className="move-btn"
-                            title="Move Backward"
-                          >
-                            <ArrowLeft size={14} />
-                            <span>Prev</span>
-                          </button>
-                          <span className="order-badge">#{index + 1}</span>
-                          <button 
-                            disabled={index === activeItems.length - 1} 
-                            onClick={() => handleMove(index, 'right')}
-                            className="move-btn"
-                            title="Move Forward"
-                          >
-                            <span>Next</span>
-                            <ArrowRight size={14} />
-                          </button>
-                        </div>
 
-                        <button 
-                          onClick={() => handleParkItemLocal(index)}
-                          className="move-btn"
-                          style={{ width: '100%', marginTop: '0.6rem', justifyContent: 'center' }}
-                        >
-                          <Lock size={12} />
-                          <span>Move to Not Sure Yet</span>
-                        </button>
+                        {/* Drag handle — only visible in manual mode */}
+                        {sortingMode === 'manual' && (
+                          <div
+                            className="admin-item-drag-handle"
+                            title="Drag to reorder"
+                          >
+                            <GripVertical size={14} />
+                            drag to reorder
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -2424,6 +2613,45 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating sticky save bar — appears whenever there are unsaved changes */}
+      <AnimatePresence>
+        {isDirty && isAuthenticated && (
+          <motion.div
+            className="sticky-save-bar"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 30 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+          >
+            <div className="sticky-save-mode-info">
+              <span className="sticky-save-mode-dot" />
+              <span>
+                {sortingMode === 'manual'
+                  ? 'Manual order — unsaved'
+                  : sortingMode === 'chromatic_desc'
+                  ? 'Color ↓ — unsaved'
+                  : 'Color ↑ — unsaved'}
+              </span>
+            </div>
+            <button
+              className="sticky-discard-btn"
+              onClick={() => loadGalleryItems()}
+              title="Discard changes"
+            >
+              <RefreshCw size={13} />
+              Discard
+            </button>
+            <button
+              className="sticky-save-btn"
+              onClick={handleSaveChanges}
+            >
+              <Save size={14} />
+              Publish order
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
