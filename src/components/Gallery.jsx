@@ -81,6 +81,17 @@ export default function Gallery() {
 
   const sortArtworks = (list) => {
     return [...list].sort((a, b) => {
+      // 1. Sort by custom_order first if present
+      const orderA = a.custom_order;
+      const orderB = b.custom_order;
+      
+      if (orderA !== null && orderA !== undefined && orderB !== null && orderB !== undefined) {
+        return orderA - orderB;
+      }
+      if (orderA !== null && orderA !== undefined) return -1;
+      if (orderB !== null && orderB !== undefined) return 1;
+
+      // 2. Fallback to chromatic sort
       const hA = a.hue ?? 0;
       const hB = b.hue ?? 0;
       const sA = a.saturation ?? 0;
@@ -101,10 +112,7 @@ export default function Gallery() {
       try {
         const { data, error } = await supabase
           .from('gallery_items')
-          .select('*')
-          .order('hue', { ascending: true })
-          .order('saturation', { ascending: true })
-          .order('lightness', { ascending: true });
+          .select('*');
         
         if (error) throw error;
         
@@ -120,9 +128,10 @@ export default function Gallery() {
             aspectRatio: item.aspect_ratio,
             hue: item.hue,
             saturation: item.saturation,
-            lightness: item.lightness
+            lightness: item.lightness,
+            custom_order: item.custom_order
           }));
-          setArtworks(loaded);
+          setArtworks(sortArtworks(loaded));
         }
       } catch (err) {
         console.warn("Failed to load artworks from Supabase database. Falling back to static local assets:", err.message);
@@ -149,7 +158,8 @@ export default function Gallery() {
             aspectRatio: payload.new.aspect_ratio,
             hue: payload.new.hue,
             saturation: payload.new.saturation,
-            lightness: payload.new.lightness
+            lightness: payload.new.lightness,
+            custom_order: payload.new.custom_order
           };
           setArtworks((prev) => {
             if (prev.some(item => item.id === newItem.id)) return prev;
@@ -168,7 +178,8 @@ export default function Gallery() {
                   aspectRatio: payload.new.aspect_ratio,
                   hue: payload.new.hue,
                   saturation: payload.new.saturation,
-                  lightness: payload.new.lightness
+                  lightness: payload.new.lightness,
+                  custom_order: payload.new.custom_order
                 };
               }
               return item;

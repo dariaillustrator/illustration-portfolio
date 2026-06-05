@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Lock, CheckCircle, AlertCircle, 
-  Loader2, Sparkles, LogOut, X, Image as ImageIcon, ChevronRight
+  Loader2, Sparkles, LogOut, X, Image as ImageIcon, ChevronRight,
+  ArrowLeft, ArrowRight, RefreshCw, Sliders
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -156,18 +157,133 @@ export default function AdminPage() {
     }
   }, []);
 
+  const sortArtworks = (list) => {
+    return [...list].sort((a, b) => {
+      const orderA = a.custom_order;
+      const orderB = b.custom_order;
+      
+      if (orderA !== null && orderA !== undefined && orderB !== null && orderB !== undefined) {
+        return orderA - orderB;
+      }
+      if (orderA !== null && orderA !== undefined) return -1;
+      if (orderB !== null && orderB !== undefined) return 1;
+
+      const hA = a.hue ?? 0;
+      const hB = b.hue ?? 0;
+      const sA = a.saturation ?? 0;
+      const sB = b.saturation ?? 0;
+      const lA = a.lightness ?? 0;
+      const lB = b.lightness ?? 0;
+      
+      if (hA !== hB) return hA - hB;
+      if (sA !== sB) return sA - sB;
+      return lA - lB;
+    });
+  };
+
   const loadGalleryItems = async () => {
     setIsLoadingItems(true);
     try {
       const { data, error } = await supabase
         .from('gallery_items')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*');
 
       if (error) throw error;
-      setGalleryItems(data || []);
+      setGalleryItems(sortArtworks(data || []));
     } catch (err) {
       console.error("Error loading gallery items:", err.message);
+    } finally {
+      setIsLoadingItems(false);
+    }
+  };
+
+  const saveNewOrder = async (orderedItems) => {
+    setIsLoadingItems(true);
+    try {
+      const promises = orderedItems.map((item, index) => {
+        return supabase
+          .from('gallery_items')
+          .update({ custom_order: index + 1 })
+          .eq('id', item.id);
+      });
+      
+      const results = await Promise.all(promises);
+      const error = results.find(r => r.error);
+      if (error) throw error.error;
+      
+      await loadGalleryItems();
+    } catch (err) {
+      console.error("Failed to save custom order:", err.message);
+      setErrorMsg(`Failed to save custom order: ${err.message}`);
+    } finally {
+      setIsLoadingItems(false);
+    }
+  };
+
+  const handleMove = async (index, direction) => {
+    const newItems = [...galleryItems];
+    const targetIndex = direction === 'left' ? index - 1 : index + 1;
+    
+    if (targetIndex < 0 || targetIndex >= newItems.length) return;
+    
+    const temp = newItems[index];
+    newItems[index] = newItems[targetIndex];
+    newItems[targetIndex] = temp;
+    
+    setGalleryItems(newItems);
+    await saveNewOrder(newItems);
+  };
+
+  const handleResetOrder = async () => {
+    if (!window.confirm("Are you sure you want to reset all manual positions and restore automatic color sorting?")) return;
+    setIsLoadingItems(true);
+    try {
+      const { error } = await supabase
+        .from('gallery_items')
+        .update({ custom_order: null })
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+      
+      if (error) throw error;
+      await loadGalleryItems();
+    } catch (err) {
+      console.error("Failed to reset order:", err.message);
+      setErrorMsg(`Failed to reset order: ${err.message}`);
+    } finally {
+      setIsLoadingItems(false);
+    }
+  };
+
+  const handleInvertChromaticOrder = async () => {
+    setIsLoadingItems(true);
+    try {
+      const sortedByColorReverse = [...galleryItems].sort((a, b) => {
+        const hA = a.hue ?? 0;
+        const hB = b.hue ?? 0;
+        const sA = a.saturation ?? 0;
+        const sB = b.saturation ?? 0;
+        const lA = a.lightness ?? 0;
+        const lB = b.lightness ?? 0;
+        
+        if (hA !== hB) return hB - hA;
+        if (sA !== sB) return sB - sA;
+        return lB - lA;
+      });
+
+      const promises = sortedByColorReverse.map((item, index) => {
+        return supabase
+          .from('gallery_items')
+          .update({ custom_order: index + 1 })
+          .eq('id', item.id);
+      });
+      
+      const results = await Promise.all(promises);
+      const error = results.find(r => r.error);
+      if (error) throw error.error;
+      
+      await loadGalleryItems();
+    } catch (err) {
+      console.error("Failed to invert order:", err.message);
+      setErrorMsg(`Failed to invert order: ${err.message}`);
     } finally {
       setIsLoadingItems(false);
     }
@@ -362,9 +478,9 @@ export default function AdminPage() {
       <style>{`
         .admin-page-container {
           min-height: 100vh;
-          background: #080810;
-          color: #f3f4f6;
-          font-family: 'Inter', sans-serif;
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          font-family: var(--font-main);
           padding-top: 8rem;
           padding-bottom: 6rem;
           display: flex;
@@ -374,37 +490,13 @@ export default function AdminPage() {
           overflow: hidden;
         }
 
-        .admin-page-container::before {
-          content: '';
-          position: absolute;
-          width: 600px;
-          height: 600px;
-          background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(0,0,0,0) 70%);
-          top: -200px;
-          left: -200px;
-          z-index: 0;
-          pointer-events: none;
-        }
-
-        .admin-page-container::after {
-          content: '';
-          position: absolute;
-          width: 500px;
-          height: 500px;
-          background: radial-gradient(circle, rgba(168, 85, 247, 0.15) 0%, rgba(0,0,0,0) 70%);
-          bottom: -200px;
-          right: -200px;
-          z-index: 0;
-          pointer-events: none;
-        }
-
         .glass-panel {
-          background: rgba(15, 15, 25, 0.65);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 24px;
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+          background: var(--glass-bg);
+          backdrop-filter: blur(30px) saturate(180%);
+          -webkit-backdrop-filter: blur(30px) saturate(180%);
+          border: 1px solid var(--glass-border);
+          border-radius: var(--radius-lg);
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
           z-index: 10;
           position: relative;
         }
@@ -424,14 +516,14 @@ export default function AdminPage() {
         .lock-icon-wrapper {
           width: 64px;
           height: 64px;
-          background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
+          background: rgba(var(--bg-primary-rgb), 0.05);
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
           margin: 0 auto 1.5rem;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          color: #a855f7;
+          border: 1px solid var(--border);
+          color: var(--text-primary);
         }
 
         .lock-dots {
@@ -445,14 +537,14 @@ export default function AdminPage() {
           width: 16px;
           height: 16px;
           border-radius: 50%;
-          border: 2px solid rgba(255, 255, 255, 0.2);
+          border: 2px solid var(--border);
           transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
         .lock-dot.active {
-          background: linear-gradient(135deg, #6366f1, #a855f7);
+          background: var(--text-primary);
           border-color: transparent;
-          box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+          box-shadow: 0 0 10px rgba(var(--text-primary), 0.3);
           transform: scale(1.2);
         }
 
@@ -468,9 +560,9 @@ export default function AdminPage() {
         .keypad-btn {
           height: 68px;
           border-radius: 50%;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          color: #f3f4f6;
+          background: rgba(var(--bg-primary-rgb), 0.03);
+          border: 1px solid var(--border);
+          color: var(--text-primary);
           font-size: 1.6rem;
           font-weight: 500;
           cursor: pointer;
@@ -481,26 +573,26 @@ export default function AdminPage() {
         }
 
         .keypad-btn:hover {
-          background: rgba(255, 255, 255, 0.08);
-          border-color: rgba(255, 255, 255, 0.15);
+          background: rgba(var(--bg-primary-rgb), 0.08);
+          border-color: var(--text-primary);
           transform: scale(1.05);
         }
 
         .keypad-btn:active {
           transform: scale(0.95);
-          background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
+          background: rgba(var(--bg-primary-rgb), 0.15);
         }
 
         .keypad-btn.action-btn {
           font-size: 0.95rem;
-          color: #9ca3af;
+          color: var(--text-secondary);
           border: none;
           background: transparent;
         }
 
         .keypad-btn.action-btn:hover {
-          background: rgba(255, 255, 255, 0.03);
-          color: #f3f4f6;
+          background: rgba(var(--bg-primary-rgb), 0.03);
+          color: var(--text-primary);
         }
 
         .shake-anim {
@@ -518,25 +610,24 @@ export default function AdminPage() {
           width: 100%;
           max-width: 1100px;
           padding: 3rem;
-          margin-left: 2rem;
-          margin-right: 2rem;
+          margin-left: auto;
+          margin-right: auto;
         }
 
         .dash-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          border-bottom: 1px solid var(--border);
           padding-bottom: 2rem;
           margin-bottom: 3rem;
         }
 
         .dash-title {
           font-size: 2.2rem;
-          font-weight: 700;
-          background: linear-gradient(135deg, #fff 30%, #a855f7 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
+          font-family: var(--font-editorial);
+          font-weight: normal;
+          color: var(--text-primary);
           display: flex;
           align-items: center;
           gap: 0.8rem;
@@ -546,18 +637,20 @@ export default function AdminPage() {
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          background: rgba(239, 68, 68, 0.1);
-          color: #f87171;
-          border: 1px solid rgba(239, 68, 68, 0.2);
+          background: transparent;
+          color: var(--text-primary);
+          border: 1px solid var(--border);
           padding: 0.6rem 1.2rem;
-          border-radius: 12px;
+          border-radius: var(--radius-md);
           cursor: pointer;
           font-weight: 500;
           transition: all 0.2s ease;
         }
 
         .logout-btn:hover {
-          background: rgba(239, 68, 68, 0.2);
+          background: rgba(239, 68, 68, 0.08);
+          color: #ef4444;
+          border-color: rgba(239, 68, 68, 0.2);
           transform: translateY(-2px);
         }
 
@@ -572,16 +665,19 @@ export default function AdminPage() {
           .upload-section {
             grid-template-columns: 1fr;
           }
+          .dashboard-container {
+            padding: 1.5rem;
+          }
         }
 
         /* Drag & Drop zone */
         .dropzone {
-          border: 2px dashed rgba(255, 255, 255, 0.15);
-          border-radius: 20px;
+          border: 2px dashed var(--border);
+          border-radius: var(--radius-lg);
           padding: 3.5rem 2rem;
           text-align: center;
           cursor: pointer;
-          background: rgba(255, 255, 255, 0.01);
+          background: rgba(var(--bg-primary-rgb), 0.01);
           transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
           display: flex;
           flex-direction: column;
@@ -591,26 +687,25 @@ export default function AdminPage() {
         }
 
         .dropzone:hover, .dropzone.active {
-          border-color: #a855f7;
-          background: rgba(168, 85, 247, 0.03);
-          box-shadow: 0 0 20px rgba(168, 85, 247, 0.1);
+          border-color: var(--text-primary);
+          background: rgba(var(--bg-primary-rgb), 0.03);
         }
 
         .dropzone-icon-wrapper {
           width: 56px;
           height: 56px;
-          border-radius: 16px;
-          background: rgba(255, 255, 255, 0.04);
+          border-radius: var(--radius-md);
+          background: rgba(var(--bg-primary-rgb), 0.04);
           display: flex;
           align-items: center;
           justify-content: center;
-          color: #9ca3af;
+          color: var(--text-secondary);
           transition: all 0.3s ease;
         }
 
         .dropzone:hover .dropzone-icon-wrapper {
-          background: linear-gradient(135deg, #6366f1, #a855f7);
-          color: #fff;
+          background: var(--text-primary);
+          color: var(--bg-primary);
           transform: scale(1.05);
         }
 
@@ -618,12 +713,12 @@ export default function AdminPage() {
           font-size: 1.1rem;
           font-weight: 600;
           margin-bottom: 0.3rem;
-          color: #e5e7eb;
+          color: var(--text-primary);
         }
 
         .dropzone-text p {
           font-size: 0.85rem;
-          color: #9ca3af;
+          color: var(--text-secondary);
         }
 
         /* Preview card */
@@ -637,10 +732,10 @@ export default function AdminPage() {
         .preview-image-container {
           width: 100%;
           height: 220px;
-          border-radius: 16px;
+          border-radius: var(--radius-md);
           overflow: hidden;
-          background: rgba(0,0,0,0.3);
-          border: 1px solid rgba(255, 255, 255, 0.05);
+          background: rgba(var(--bg-primary-rgb), 0.05);
+          border: 1px solid var(--border);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -662,23 +757,24 @@ export default function AdminPage() {
         .input-group label {
           font-size: 0.85rem;
           font-weight: 500;
-          color: #9ca3af;
+          color: var(--text-secondary);
         }
 
         .input-text {
-          background: rgba(0, 0, 0, 0.25);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 12px;
+          background: rgba(var(--bg-primary-rgb), 0.03);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
           padding: 0.8rem 1rem;
-          color: #f3f4f6;
+          color: var(--text-primary);
           font-size: 0.95rem;
           outline: none;
           transition: all 0.2s ease;
+          font-family: inherit;
         }
 
         .input-text:focus {
-          border-color: #a855f7;
-          box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2);
+          border-color: var(--text-primary);
+          box-shadow: 0 0 0 2px rgba(var(--text-primary), 0.1);
         }
 
         .meta-tags {
@@ -690,9 +786,9 @@ export default function AdminPage() {
         .meta-tag {
           font-size: 0.8rem;
           padding: 0.4rem 0.8rem;
-          border-radius: 8px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: var(--radius-md);
+          background: rgba(var(--bg-primary-rgb), 0.03);
+          border: 1px solid var(--border);
           display: flex;
           align-items: center;
           gap: 0.4rem;
@@ -700,22 +796,22 @@ export default function AdminPage() {
 
         .meta-tag.color-tag {
           font-weight: 600;
-          color: #e5e7eb;
+          color: var(--text-primary);
         }
 
         .color-preview-swatch {
           width: 12px;
           height: 12px;
           border-radius: 50%;
-          border: 1px solid rgba(255, 255, 255, 0.2);
+          border: 1px solid rgba(var(--text-primary), 0.2);
         }
 
         .action-button {
           width: 100%;
           padding: 0.9rem;
-          border-radius: 12px;
-          background: linear-gradient(135deg, #6366f1, #a855f7);
-          color: #ffffff;
+          border-radius: var(--radius-md);
+          background: var(--text-primary);
+          color: var(--bg-primary);
           font-weight: 600;
           font-size: 1rem;
           border: none;
@@ -725,12 +821,11 @@ export default function AdminPage() {
           justify-content: center;
           gap: 0.6rem;
           transition: all 0.3s ease;
-          box-shadow: 0 8px 16px rgba(168, 85, 247, 0.2);
         }
 
         .action-button:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 12px 20px rgba(168, 85, 247, 0.3);
+          opacity: 0.9;
         }
 
         .action-button:active:not(:disabled) {
@@ -738,10 +833,9 @@ export default function AdminPage() {
         }
 
         .action-button:disabled {
-          background: rgba(255, 255, 255, 0.08);
-          color: #6b7280;
+          background: rgba(var(--bg-primary-rgb), 0.08);
+          color: var(--text-secondary);
           cursor: not-allowed;
-          box-shadow: none;
         }
 
         /* Success Banner */
@@ -750,19 +844,19 @@ export default function AdminPage() {
           align-items: center;
           gap: 0.8rem;
           padding: 1rem;
-          border-radius: 12px;
+          border-radius: var(--radius-md);
           font-size: 0.9rem;
         }
 
         .status-banner.success {
-          background: rgba(16, 185, 129, 0.1);
-          color: #34d399;
+          background: rgba(16, 185, 129, 0.08);
+          color: #10b981;
           border: 1px solid rgba(16, 185, 129, 0.2);
         }
 
         .status-banner.error {
-          background: rgba(239, 68, 68, 0.1);
-          color: #f87171;
+          background: rgba(239, 68, 68, 0.08);
+          color: #ef4444;
           border: 1px solid rgba(239, 68, 68, 0.2);
         }
 
@@ -773,9 +867,9 @@ export default function AdminPage() {
 
         .section-header {
           font-size: 1.5rem;
-          font-weight: 600;
-          margin-bottom: 1.8rem;
-          color: #e5e7eb;
+          font-family: var(--font-editorial);
+          font-weight: normal;
+          color: var(--text-primary);
           display: flex;
           align-items: center;
           gap: 0.6rem;
@@ -788,17 +882,16 @@ export default function AdminPage() {
         }
 
         .admin-item-card {
-          border-radius: 16px;
+          border-radius: var(--radius-md);
           overflow: hidden;
-          background: rgba(255, 255, 255, 0.02);
-          border: 1px solid rgba(255, 255, 255, 0.05);
+          background: var(--glass-bg);
+          border: 1px solid var(--glass-border);
           position: relative;
-          group: hover;
           transition: all 0.3s ease;
         }
 
         .admin-item-card:hover {
-          border-color: rgba(255, 255, 255, 0.12);
+          border-color: var(--text-primary);
           transform: translateY(-4px);
         }
 
@@ -806,7 +899,7 @@ export default function AdminPage() {
           width: 100%;
           aspect-ratio: 1;
           overflow: hidden;
-          background: #05050a;
+          background: rgba(var(--bg-primary-rgb), 0.05);
           position: relative;
         }
 
@@ -939,10 +1032,9 @@ export default function AdminPage() {
             <div className="dash-header">
               <div>
                 <h1 className="dash-title">
-                  <Sparkles size={28} className="text-purple-500" />
                   Daria's Creative Dashboard
                 </h1>
-                <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginTop: '0.3rem' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.3rem' }}>
                   Upload and optimize new illustrations directly into the portfolio.
                 </p>
               </div>
@@ -1074,10 +1166,22 @@ export default function AdminPage() {
 
             {/* List & Edit section */}
             <div className="list-section">
-              <h3 className="section-header">
-                <ImageIcon size={22} className="text-indigo-400" />
-                Active Portfolio Artworks ({galleryItems.length})
-              </h3>
+              <div className="flex flex-col gap-4 mb-8">
+                <h3 className="section-header" style={{ marginBottom: 0 }}>
+                  <ImageIcon size={22} />
+                  Active Portfolio Artworks ({galleryItems.length})
+                </h3>
+                <div className="order-actions-row">
+                  <button onClick={handleResetOrder} className="btn-secondary flex items-center gap-2" style={{ padding: '0.6rem 1.2rem', fontSize: '0.85rem', height: '38px', borderRadius: '8px' }}>
+                    <RefreshCw size={14} />
+                    Reset to Color Order
+                  </button>
+                  <button onClick={handleInvertChromaticOrder} className="btn-secondary flex items-center gap-2" style={{ padding: '0.6rem 1.2rem', fontSize: '0.85rem', height: '38px', borderRadius: '8px' }}>
+                    <Sliders style={{ transform: 'rotate(180deg)' }} size={14} />
+                    Invert Color Sorting
+                  </button>
+                </div>
+              </div>
 
               {isLoadingItems ? (
                 <div className="flex justify-center p-12">
@@ -1087,7 +1191,7 @@ export default function AdminPage() {
                 <p className="text-gray-500 text-center py-8">The database gallery is empty or loading.</p>
               ) : (
                 <div className="admin-gallery-grid">
-                  {galleryItems.map((item) => (
+                  {galleryItems.map((item, index) => (
                     <div key={item.id} className="admin-item-card">
                       <button 
                         onClick={() => handleDelete(item.id, item.src)}
@@ -1114,6 +1218,26 @@ export default function AdminPage() {
                             H:{(item.hue * 360).toFixed(0)}°
                           </div>
                           <span>Ratio: {item.aspect_ratio.toFixed(2)}</span>
+                        </div>
+                        
+                        <div className="admin-item-controls">
+                          <button 
+                            disabled={index === 0} 
+                            onClick={() => handleMove(index, 'left')}
+                            className="move-btn"
+                            title="Move left"
+                          >
+                            <ArrowLeft size={14} />
+                          </button>
+                          <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>Order: {item.custom_order || 'Auto'}</span>
+                          <button 
+                            disabled={index === galleryItems.length - 1} 
+                            onClick={() => handleMove(index, 'right')}
+                            className="move-btn"
+                            title="Move right"
+                          >
+                            <ArrowRight size={14} />
+                          </button>
                         </div>
                       </div>
                     </div>

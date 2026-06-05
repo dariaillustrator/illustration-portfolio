@@ -94,185 +94,192 @@ export default function ContactOverlay() {
   return (
     <AnimatePresence>
       {isContactOpen && (
-        <div style={{
-          position: 'fixed',
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100vw',
+      height: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 9999,
+      padding: 'clamp(0.75rem, 4vw, 2rem)',
+      pointerEvents: 'none'
+    }}>
+      {/* Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={closeContact}
+        style={{
+          position: 'absolute',
           top: 0,
           left: 0,
-          width: '100vw',
-          height: '100vh',
+          width: '100%',
+          height: '100%',
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(12px)',
+          cursor: 'pointer',
+          pointerEvents: 'all'
+        }}
+      />
+
+      {/* Contact Modal Card */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 30 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 30 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: '500px',
+          background: 'var(--glass-bg)',
+          backdropFilter: 'blur(40px) saturate(180%)',
+          border: '1px solid var(--glass-border)',
+          borderRadius: '8px',
+          boxShadow: '0 40px 100px rgba(0,0,0,0.4)',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          pointerEvents: 'all'
+        }}
+      >
+        {/* Header */}
+        <div style={{ 
+          padding: '1.5rem clamp(1rem, 4vw, 2rem)', 
+          borderBottom: '1px solid var(--glass-border)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '2rem',
-          pointerEvents: 'none'
+          justifyContent: 'space-between',
+          background: 'rgba(255,255,255,0.05)',
+          flexShrink: 0
         }}>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, letterSpacing: '0.05em' }}>GET IN TOUCH</h2>
+          <button 
             onClick={closeContact}
             style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              background: 'rgba(0,0,0,0.6)',
-              backdropFilter: 'blur(12px)',
-              cursor: 'pointer',
-              pointerEvents: 'all'
-            }}
-          />
-
-          {/* Contact Modal Card */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 30 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 30 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            style={{
-              position: 'relative',
-              width: '100%',
-              maxWidth: '500px',
-              background: 'var(--glass-bg)',
-              backdropFilter: 'blur(40px) saturate(180%)',
-              border: '1px solid var(--glass-border)',
-              borderRadius: '8px',
-              boxShadow: '0 40px 100px rgba(0,0,0,0.4)',
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-              pointerEvents: 'all'
-            }}
-          >
-            {/* Header */}
-            <div style={{ 
-              padding: '1.5rem 2rem', 
-              borderBottom: '1px solid var(--glass-border)',
+              background: 'var(--text-primary)',
+              color: 'var(--bg-primary)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '32px',
+              height: '32px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'rgba(255,255,255,0.05)',
-              flexShrink: 0
-            }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, letterSpacing: '0.05em' }}>GET IN TOUCH</h2>
-              <button 
-                onClick={closeContact}
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'transform 0.2s ease'
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* List Content */}
+        <div style={{ 
+          padding: 'clamp(1rem, 4vw, 2rem)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1rem'
+        }}>
+          {contacts.map((contact, i) => {
+            const isLink = contact.action.type === 'link';
+            const WrapperTag = isLink ? 'a' : 'div';
+            const extraProps = isLink 
+              ? { href: contact.action.href } 
+              : (contact.action.type === 'tab' 
+                ? { onClick: () => window.open(contact.action.href, '_blank', 'noopener,noreferrer'), style: { cursor: 'pointer' } } 
+                : {});
+
+            return (
+              <motion.div
+                key={contact.label}
+                onMouseEnter={() => setHoveredIdx(i)}
+                onMouseLeave={() => setHoveredIdx(null)}
                 style={{
-                  background: 'var(--text-primary)',
-                  color: 'var(--bg-primary)',
-                  border: 'none',
-                  borderRadius: '50%',
-                  width: '32px',
-                  height: '32px',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  transition: 'transform 0.2s ease'
+                  justifyContent: 'space-between',
+                  padding: '1.2rem',
+                  background: 'rgba(255,255,255,0.03)',
+                  borderRadius: '8px',
+                  border: '1px solid',
+                  borderColor: hoveredIdx === i ? 'var(--glass-border)' : 'transparent',
+                  transition: 'all 0.3s ease',
                 }}
-                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
-                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
               >
-                <X size={18} />
-              </button>
-            </div>
+                <WrapperTag 
+                  {...extraProps}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem',
+                    flex: 1,
+                    minWidth: 0, // critical to allow flex children to shrink and prevent overflow
+                    color: 'var(--text-primary)',
+                    textDecoration: 'none',
+                    ...((!isLink && contact.action.type !== 'tab') ? {} : { cursor: 'pointer' })
+                  }}
+                >
+                  <div style={{ color: 'var(--text-primary)', opacity: 0.8, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                    {contact.icon}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', minWidth: 0, flex: 1 }}>
+                    <span style={{ fontSize: '0.8rem', opacity: 0.4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {contact.label}
+                    </span>
+                    <span style={{ 
+                      fontSize: 'clamp(0.85rem, 3.8vw, 1.05rem)', 
+                      fontWeight: 500,
+                      wordBreak: 'break-all',
+                      lineHeight: '1.3'
+                    }}>
+                      {contact.value}
+                    </span>
+                  </div>
+                </WrapperTag>
 
-            {/* List Content */}
-            <div style={{ 
-              padding: '2rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '1rem'
-            }}>
-              {contacts.map((contact, i) => {
-                const isLink = contact.action.type === 'link';
-                const WrapperTag = isLink ? 'a' : 'div';
-                const extraProps = isLink 
-                  ? { href: contact.action.href } 
-                  : (contact.action.type === 'tab' 
-                    ? { onClick: () => window.open(contact.action.href, '_blank', 'noopener,noreferrer'), style: { cursor: 'pointer' } } 
-                    : {});
-
-                return (
-                  <motion.div
-                    key={contact.label}
-                    onMouseEnter={() => setHoveredIdx(i)}
-                    onMouseLeave={() => setHoveredIdx(null)}
+                {contact.isCopyable && (
+                  <button
+                    onClick={copyEmail}
                     style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      opacity: copied ? 0.9 : 0.4,
+                      cursor: 'pointer',
+                      padding: '0.5rem',
+                      borderRadius: '6px',
+                      transition: 'opacity 0.2s, background-color 0.2s',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '1.2rem',
-                      background: 'rgba(255,255,255,0.03)',
-                      borderRadius: '8px',
-                      border: '1px solid',
-                      borderColor: hoveredIdx === i ? 'var(--glass-border)' : 'transparent',
-                      transition: 'all 0.3s ease',
+                      justifyContent: 'center',
+                      flexShrink: 0
                     }}
+                    onMouseEnter={e => {
+                      if (!copied) e.currentTarget.style.opacity = 0.8;
+                      e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)';
+                    }}
+                    onMouseLeave={e => {
+                      if (!copied) e.currentTarget.style.opacity = 0.4;
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                    title="Copy email to clipboard"
                   >
-                    <WrapperTag 
-                      {...extraProps}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '1.2rem',
-                        flex: 1,
-                        color: 'var(--text-primary)',
-                        textDecoration: 'none',
-                        ...((!isLink && contact.action.type !== 'tab') ? {} : { cursor: 'pointer' })
-                      }}
-                    >
-                      <div style={{ color: 'var(--text-primary)', opacity: 0.8, display: 'flex', alignItems: 'center' }}>
-                        {contact.icon}
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                        <span style={{ fontSize: '0.8rem', opacity: 0.4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          {contact.label}
-                        </span>
-                        <span style={{ fontSize: '1.05rem', fontWeight: 500 }}>
-                          {contact.value}
-                        </span>
-                      </div>
-                    </WrapperTag>
-
-                    {contact.isCopyable && (
-                      <button
-                        onClick={copyEmail}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-primary)',
-                          opacity: copied ? 0.9 : 0.4,
-                          cursor: 'pointer',
-                          padding: '0.5rem',
-                          borderRadius: '6px',
-                          transition: 'opacity 0.2s, background-color 0.2s',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                        onMouseEnter={e => {
-                          if (!copied) e.currentTarget.style.opacity = 0.8;
-                          e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)';
-                        }}
-                        onMouseLeave={e => {
-                          if (!copied) e.currentTarget.style.opacity = 0.4;
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }}
-                        title="Copy email to clipboard"
-                      >
-                        {copied ? <Check size={18} color="green" /> : <Copy size={18} />}
-                      </button>
-                    )}
-                  </motion.div>
-                );
-              })}
-            </div>
-          </motion.div>
+                    {copied ? <Check size={18} color="green" /> : <Copy size={18} />}
+                  </button>
+                )}
+              </motion.div>
+            );
+          })}
         </div>
+      </motion.div>
+    </div>
       )}
     </AnimatePresence>
   );
