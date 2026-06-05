@@ -2507,16 +2507,38 @@ export default function AdminPage() {
             </div>
 
             {errorMsg && (
-              <div className="status-banner error" style={{ marginBottom: '2rem' }}>
-                <AlertCircle size={20} />
-                <span>{errorMsg}</span>
+              <div className="status-banner error" style={{ marginBottom: '2rem', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                  <AlertCircle size={20} style={{ flexShrink: 0 }} />
+                  <span>{errorMsg}</span>
+                </div>
+                <button 
+                  onClick={() => setErrorMsg('')}
+                  style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center', opacity: 0.7, flexShrink: 0 }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = 0.7}
+                  title="Close"
+                >
+                  <X size={18} />
+                </button>
               </div>
             )}
 
             {uploadSuccess && (
-              <div className="status-banner success" style={{ marginBottom: '2rem' }}>
-                <CheckCircle size={20} />
-                <span>Artwork uploaded and color-sorted successfully! It is now live in real-time.</span>
+              <div className="status-banner success" style={{ marginBottom: '2rem', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                  <CheckCircle size={20} style={{ flexShrink: 0 }} />
+                  <span>Artwork uploaded and color-sorted successfully! It is now live in real-time.</span>
+                </div>
+                <button 
+                  onClick={() => setUploadSuccess(false)}
+                  style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center', opacity: 0.7, flexShrink: 0 }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = 0.7}
+                  title="Close"
+                >
+                  <X size={18} />
+                </button>
               </div>
             )}
 
