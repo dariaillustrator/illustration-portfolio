@@ -156,13 +156,13 @@ export default function NotFoundPage() {
         </svg>
       </div>
 
-      <h1 className="not-found-title">Page Wilted</h1>
+      <h1 className="not-found-title">What are you looking for?</h1>
       <p className="not-found-desc">
-        The page you are looking for has faded away, does not exist, or has been moved to another location.
+        The page has faded away, does not exist, or has been moved to another location.
       </p>
       
       <Link to="/" className="back-home-btn">
-        Return to Portfolio
+        Return to Gallery
       </Link>
     </div>
   );
