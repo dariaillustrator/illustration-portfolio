@@ -701,6 +701,19 @@ export default function AdminPage() {
     setAnalysisMeta(null);
   };
 
+  const handleCancelUpload = () => {
+    setSelectedFile(null);
+    setPreviewUrl('');
+    setAnalysisMeta(null);
+    setCustomTitle('');
+    setUploadStep('');
+    setIsUploading(false);
+    setErrorMsg('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -762,9 +775,20 @@ export default function AdminPage() {
       // 2. Convert to Base64
       setUploadStep('Preparing files for upload...');
       
-      const fileExt = 'jpg'; // We compress to JPEG
+      const isPng = selectedFile.type === 'image/png';
+      const isTooLarge = selectedFile.size > 2.5 * 1024 * 1024;
+      
+      let originalBlob = selectedFile;
+      let originalExt = selectedFile.name.split('.').pop() || 'jpg';
+      
+      if (isPng || isTooLarge) {
+        setUploadStep('Optimizing original image to fit server limits...');
+        originalBlob = await optimizeImage(selectedFile, 3600, 0.90);
+        originalExt = 'jpg'; // We optimized/converted it to JPEG
+      }
+      
+      const fileExt = 'jpg'; // We compress optimized to JPEG
       const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
-      const originalExt = selectedFile.name.split('.').pop() || 'jpg';
       const originalFileName = `original_${fileName.split('.')[0]}.${originalExt}`;
 
       const readAsBase64 = (fileOrBlob) => {
@@ -778,7 +802,7 @@ export default function AdminPage() {
 
       try {
         const base64data = await readAsBase64(optimizedBlob);
-        const originalBase64 = await readAsBase64(selectedFile);
+        const originalBase64 = await readAsBase64(originalBlob);
 
         setUploadStep('Uploading safely to Cloudflare R2 and Supabase...');
 
@@ -2576,48 +2600,70 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
-                  <button 
-                    onClick={() => handleUpload(false)}
-                    disabled={!selectedFile || isUploading || !analysisMeta}
-                    className="action-button"
-                    style={{ flex: 1 }}
-                  >
-                    {isUploading ? (
-                      <>
-                        <Loader2 size={18} className="animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={18} />
-                        Publish to Gallery
-                      </>
-                    )}
-                  </button>
-                  <button 
-                    onClick={() => handleUpload(true)}
-                    disabled={!selectedFile || isUploading || !analysisMeta}
-                    className="action-button"
-                    style={{ 
-                      flex: 1,
-                      background: 'transparent',
-                      border: '1px solid var(--text-primary)',
-                      color: 'var(--text-primary)'
-                    }}
-                  >
-                    {isUploading ? (
-                      <>
-                        <Loader2 size={18} className="animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Lock size={18} />
-                        Park in Not Sure Yet
-                      </>
-                    )}
-                  </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+                  <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
+                    <button 
+                      onClick={() => handleUpload(false)}
+                      disabled={!selectedFile || isUploading || !analysisMeta}
+                      className="action-button"
+                      style={{ flex: 1 }}
+                    >
+                      {isUploading ? (
+                        <>
+                          <Loader2 size={18} className="animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={18} />
+                          Publish to Gallery
+                        </>
+                      )}
+                    </button>
+                    <button 
+                      onClick={() => handleUpload(true)}
+                      disabled={!selectedFile || isUploading || !analysisMeta}
+                      className="action-button"
+                      style={{ 
+                        flex: 1,
+                        background: 'transparent',
+                        border: '1px solid var(--text-primary)',
+                        color: 'var(--text-primary)'
+                      }}
+                    >
+                      {isUploading ? (
+                        <>
+                          <Loader2 size={18} className="animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Lock size={18} />
+                          Park in Not Sure Yet
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {selectedFile && !isUploading && (
+                    <button 
+                      onClick={handleCancelUpload}
+                      className="action-button"
+                      style={{ 
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        color: '#f87171',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                        width: '100%',
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      <X size={16} />
+                      Cancel Upload
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -2960,7 +3006,7 @@ export default function AdminPage() {
                   The trash is empty.
                 </div>
               ) : (
-                <div className="grid-container" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '1rem' }}>
+                <div className="grid-container" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 100px))', gap: '1rem' }}>
                   {trashItems.map((item) => {
                     const daysLeft = 30 - Math.floor((Date.now() - new Date(item.deleted_at).getTime()) / (1000 * 60 * 60 * 24));
                     return (
@@ -2972,22 +3018,24 @@ export default function AdminPage() {
                             style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(100%)' }}
                           />
                         </div>
-                        <div style={{ position: 'absolute', top: '0', left: '0', right: '0', bottom: '0', background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem', padding: '0.5rem', opacity: 0, transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = 1} onMouseLeave={(e) => e.currentTarget.style.opacity = 0}>
+                        <div style={{ position: 'absolute', top: '0', left: '0', right: '0', bottom: '0', background: 'rgba(0,0,0,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.4rem', opacity: 0, transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.opacity = 1} onMouseLeave={(e) => e.currentTarget.style.opacity = 0}>
                           <button 
                             onClick={() => handleRestore(item, false)}
-                            style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)', padding: '0.4rem 0.8rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, width: '100%', maxWidth: '120px', textAlign: 'center' }}
+                            title="Restore & Publish to Gallery"
+                            style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)', padding: '0.25rem 0.4rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, width: '90%', textAlign: 'center' }}
                           >
-                            Restore & Pub
+                            Pub
                           </button>
                           <button 
                             onClick={() => handleRestore(item, true)}
-                            style={{ background: 'transparent', color: '#ffffff', padding: '0.4rem 0.8rem', borderRadius: '4px', border: '1px solid #ffffff', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, width: '100%', maxWidth: '120px', textAlign: 'center' }}
+                            title="Restore & Park in Not Sure Yet"
+                            style={{ background: 'transparent', color: '#ffffff', padding: '0.25rem 0.4rem', borderRadius: '4px', border: '1px solid #ffffff', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, width: '90%', textAlign: 'center' }}
                           >
-                            Restore Parked
+                            Park
                           </button>
                         </div>
-                        <div style={{ position: 'absolute', bottom: '0', left: '0', right: '0', background: 'var(--bg-primary)', padding: '0.4rem', fontSize: '0.7rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                          {daysLeft} days left
+                        <div style={{ position: 'absolute', bottom: '0', left: '0', right: '0', background: 'var(--bg-primary)', padding: '0.25rem 0.4rem', fontSize: '0.62rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                          {daysLeft}d left
                         </div>
                       </div>
                     );
