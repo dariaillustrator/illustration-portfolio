@@ -188,7 +188,7 @@ export default function AdminPage() {
         // Wrong passcode trigger shake
         setTimeout(() => {
           setIsShaking(true);
-          setErrorMsg('Codice non corretto. Riprova.');
+          setErrorMsg('Incorrect passcode. Please try again.');
           setPasscode('');
           setTimeout(() => setIsShaking(false), 500);
         }, 300);
@@ -223,13 +223,13 @@ export default function AdminPage() {
     setCustomTitle(filenameNoExt);
 
     try {
-      setUploadStep('Analisi dei colori in corso...');
+      setUploadStep('Analyzing color metrics...');
       const meta = await analyzeImage(file);
       setAnalysisMeta(meta);
       setUploadStep('');
     } catch (err) {
       console.error(err);
-      setErrorMsg("Impossibile analizzare l'immagine.");
+      setErrorMsg("Failed to analyze image color profile.");
       setUploadStep('');
     }
   };
@@ -245,13 +245,13 @@ export default function AdminPage() {
       setCustomTitle(filenameNoExt);
       
       try {
-        setUploadStep('Analisi dei colori in corso...');
+        setUploadStep('Analyzing color metrics...');
         const meta = await analyzeImage(file);
         setAnalysisMeta(meta);
         setUploadStep('');
       } catch (err) {
         console.error(err);
-        setErrorMsg("Impossibile analizzare l'immagine.");
+        setErrorMsg("Failed to analyze image color profile.");
         setUploadStep('');
       }
     }
@@ -265,11 +265,11 @@ export default function AdminPage() {
 
     try {
       // 1. Optimize Image
-      setUploadStep('Ottimizzazione per il web (ridimensionamento e compressione)...');
+      setUploadStep('Optimizing for web (resizing and compression)...');
       const optimizedBlob = await optimizeImage(selectedFile, 1600, 0.85);
 
       // 2. Convert Blob to Base64
-      setUploadStep('Preparazione del file per il caricamento...');
+      setUploadStep('Preparing file for upload...');
       const reader = new FileReader();
       
       const fileExt = 'jpg'; // We compress to JPEG
@@ -278,7 +278,7 @@ export default function AdminPage() {
       reader.onloadend = async () => {
         try {
           const base64data = reader.result.split(',')[1];
-          setUploadStep('Salvataggio sicuro su Cloudflare R2 e Supabase...');
+          setUploadStep('Uploading safely to Cloudflare R2 and Supabase...');
 
           const response = await fetch('/api/upload-to-r2', {
             method: 'POST',
@@ -288,7 +288,7 @@ export default function AdminPage() {
             body: JSON.stringify({
               image: base64data,
               filename: fileName,
-              title: customTitle || 'Senza Titolo',
+              title: customTitle || 'Untitled',
               aspect_ratio: analysisMeta.aspect_ratio,
               hue: analysisMeta.hue,
               saturation: analysisMeta.saturation,
@@ -298,7 +298,7 @@ export default function AdminPage() {
 
           const resData = await response.json();
           if (!response.ok) {
-            throw new Error(resData.error || 'Errore durante l\'upload.');
+            throw new Error(resData.error || 'Upload failed.');
           }
 
           setUploadSuccess(true);
@@ -311,28 +311,28 @@ export default function AdminPage() {
           loadGalleryItems();
         } catch (uploadErr) {
           console.error(uploadErr);
-          setErrorMsg(`Errore nel caricamento: ${uploadErr.message}`);
+          setErrorMsg(`Upload failed: ${uploadErr.message}`);
           setIsUploading(false);
           setUploadStep('');
         }
       };
 
       reader.onerror = () => {
-        throw new Error('Impossibile convertire l\'immagine.');
+        throw new Error('Could not convert image.');
       };
 
       reader.readAsDataURL(optimizedBlob);
 
     } catch (err) {
       console.error(err);
-      setErrorMsg(`Errore nel caricamento: ${err.message}`);
+      setErrorMsg(`Upload failed: ${err.message}`);
       setIsUploading(false);
       setUploadStep('');
     }
   };
 
   const handleDelete = async (id, src) => {
-    if (!window.confirm("Sei sicura di voler eliminare questa illustrazione? Verrà rimossa immediatamente anche dal sito pubblico.")) return;
+    if (!window.confirm("Are you sure you want to delete this artwork? It will be removed immediately from the public website.")) return;
 
     try {
       const response = await fetch('/api/delete-from-r2', {
@@ -345,13 +345,13 @@ export default function AdminPage() {
 
       const resData = await response.json();
       if (!response.ok) {
-        throw new Error(resData.error || 'Impossibile eliminare l\'elemento.');
+        throw new Error(resData.error || 'Failed to delete item.');
       }
 
       loadGalleryItems();
     } catch (err) {
       console.error(err);
-      alert(`Impossibile eliminare l'elemento: ${err.message}`);
+      alert(`Failed to delete item: ${err.message}`);
     }
   };
 
@@ -891,8 +891,8 @@ export default function AdminPage() {
               <div className="lock-icon-wrapper">
                 <Lock size={28} />
               </div>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '0.5rem' }}>Accesso Riservato</h2>
-              <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>Inserisci il codice numerico per accedere</p>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '0.5rem' }}>Admin Access Only</h2>
+              <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>Enter the passcode to unlock the dashboard</p>
             </div>
 
             <div className="lock-dots">
@@ -940,15 +940,15 @@ export default function AdminPage() {
               <div>
                 <h1 className="dash-title">
                   <Sparkles size={28} className="text-purple-500" />
-                  Area Amministrativa Daria
+                  Daria's Creative Dashboard
                 </h1>
                 <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginTop: '0.3rem' }}>
-                  Carica e ottimizza nuove illustrazioni direttamente nel portfolio.
+                  Upload and optimize new illustrations directly into the portfolio.
                 </p>
               </div>
               <button onClick={handleLogout} className="logout-btn">
                 <LogOut size={16} />
-                Esci
+                Sign Out
               </button>
             </div>
 
@@ -962,7 +962,7 @@ export default function AdminPage() {
             {uploadSuccess && (
               <div className="status-banner success" style={{ marginBottom: '2rem' }}>
                 <CheckCircle size={20} />
-                <span>Illustrazione caricata e ordinata per colore con successo! Appare ora sul frontend in tempo reale.</span>
+                <span>Artwork uploaded and color-sorted successfully! It is now live in real-time.</span>
               </div>
             )}
 
@@ -980,8 +980,8 @@ export default function AdminPage() {
                     {isUploading ? <Loader2 size={32} className="animate-spin" /> : <Upload size={32} />}
                   </div>
                   <div className="dropzone-text">
-                    <h4>Trascina qui l'immagine</h4>
-                    <p>oppure clicca per sfogliare i tuoi file</p>
+                    <h4>Drag & drop your artwork here</h4>
+                    <p>or click to browse local files</p>
                   </div>
                   <input 
                     type="file" 
@@ -1009,13 +1009,13 @@ export default function AdminPage() {
                   ) : (
                     <div className="flex flex-col items-center gap-2 text-gray-500">
                       <ImageIcon size={48} strokeWidth={1} />
-                      <p style={{ fontSize: '0.85rem' }}>Nessun file selezionato</p>
+                      <p style={{ fontSize: '0.85rem' }}>No file selected</p>
                     </div>
                   )}
                 </div>
 
                 <div className="input-group">
-                  <label htmlFor="title">Titolo dell'Opera</label>
+                  <label htmlFor="title">Artwork Title</label>
                   <input 
                     type="text" 
                     id="title"
@@ -1030,11 +1030,11 @@ export default function AdminPage() {
                 {analysisMeta && (
                   <div className="flex flex-col gap-3">
                     <label style={{ fontSize: '0.85rem', fontWeight: 500, color: '#9ca3af' }}>
-                      Metadati di Ordinamento Rilevati:
+                      Detected Sorting Metadata:
                     </label>
                     <div className="meta-tags">
                       <div className="meta-tag color-tag">
-                        Colore Principale:
+                        Dominant Color:
                         <div 
                           className="color-preview-swatch" 
                           style={{ 
@@ -1046,7 +1046,7 @@ export default function AdminPage() {
                         Aspect Ratio: {analysisMeta.aspect_ratio.toFixed(3)}
                       </div>
                       <div className="meta-tag">
-                        Ottimizzazione: JPG ~85% (Max 1600px)
+                        Optimization: JPG ~85% (Max 1600px)
                       </div>
                     </div>
                   </div>
@@ -1060,12 +1060,12 @@ export default function AdminPage() {
                   {isUploading ? (
                     <>
                       <Loader2 size={18} className="animate-spin" />
-                      Elaborazione in corso...
+                      Processing...
                     </>
                   ) : (
                     <>
                       <Sparkles size={18} />
-                      Pubblica nel Portfolio
+                      Publish to Portfolio
                     </>
                   )}
                 </button>
@@ -1076,7 +1076,7 @@ export default function AdminPage() {
             <div className="list-section">
               <h3 className="section-header">
                 <ImageIcon size={22} className="text-indigo-400" />
-                Opere Attualmente Online ({galleryItems.length})
+                Active Portfolio Artworks ({galleryItems.length})
               </h3>
 
               {isLoadingItems ? (
@@ -1084,7 +1084,7 @@ export default function AdminPage() {
                   <Loader2 size={36} className="animate-spin text-purple-500" />
                 </div>
               ) : galleryItems.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">La galleria in Supabase è attualmente vuota o in fase di importazione.</p>
+                <p className="text-gray-500 text-center py-8">The database gallery is empty or loading.</p>
               ) : (
                 <div className="admin-gallery-grid">
                   {galleryItems.map((item) => (
@@ -1113,7 +1113,7 @@ export default function AdminPage() {
                             />
                             H:{(item.hue * 360).toFixed(0)}°
                           </div>
-                          <span>Rapporto: {item.aspect_ratio.toFixed(2)}</span>
+                          <span>Ratio: {item.aspect_ratio.toFixed(2)}</span>
                         </div>
                       </div>
                     </div>
