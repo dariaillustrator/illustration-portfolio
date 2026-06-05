@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Lock, CheckCircle, AlertCircle, 
   Loader2, Sparkles, LogOut, X, Image as ImageIcon, ChevronRight,
-  RefreshCw, ChevronLeft, Save, Download, Archive, Info
+  RefreshCw, ChevronLeft, Save, Download, Archive, Info,
+  Share2, Eye, Check, Square, CheckSquare
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import JSZip from 'jszip';
@@ -206,6 +207,10 @@ export default function AdminPage() {
   const [sortingMode, setSortingMode] = useState('chromatic_asc'); // 'chromatic_asc', 'chromatic_desc', 'manual'
   const [isDirty, setIsDirty] = useState(false);
   const [copiedColor, setCopiedColor] = useState('');
+  
+  // Selection states
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [isSharingBulk, setIsSharingBulk] = useState(false);
 
   // Feature request states
   const [requestContent, setRequestContent] = useState('');
@@ -242,6 +247,58 @@ export default function AdminPage() {
     if (confirmDialog?.onCancel) confirmDialog.onCancel();
     setConfirmDialog(null);
   }, [confirmDialog]);
+
+  // Selection toggle helper functions
+  const toggleSelect = useCallback((id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const selectAllActive = useCallback(() => {
+    const allActiveIds = activeItems.map(item => item.id);
+    const areAllSelected = allActiveIds.every(id => selectedIds.has(id));
+    
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (areAllSelected) {
+        // Deselect all active
+        allActiveIds.forEach(id => next.delete(id));
+      } else {
+        // Select all active
+        allActiveIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  }, [activeItems, selectedIds]);
+
+  const selectAllParked = useCallback(() => {
+    const allParkedIds = parkedItems.map(item => item.id);
+    const areAllSelected = allParkedIds.every(id => selectedIds.has(id));
+
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (areAllSelected) {
+        // Deselect all parked
+        allParkedIds.forEach(id => next.delete(id));
+      } else {
+        // Select all parked
+        allParkedIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  }, [parkedItems, selectedIds]);
+
 
   // Portfolio download states
   const [isDownloadingPortfolio, setIsDownloadingPortfolio] = useState(false);
@@ -1049,6 +1106,170 @@ export default function AdminPage() {
       setIsDownloadingPortfolio(false);
       setPortfolioDownloadProgress('');
     }
+  };
+
+  const handleShareAll = async () => {
+    if (isSharingBulk) return;
+    setIsSharingBulk(true);
+    showToast('Generating shareable link for portfolio...', 'info', 2000);
+    
+    try {
+      const token = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+      
+      const res = await fetch('/api/admin-action', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          action: 'create_shared_link',
+          payload: {
+            token,
+            item_ids: ["*"],
+            allow_download: true
+          }
+        })
+      });
+
+      if (!res.ok) throw new Error('API request failed');
+
+      const shareUrl = `${window.location.origin}/shared/${token}`;
+      await navigator.clipboard.writeText(shareUrl);
+      showToast('Public link copied to clipboard! (Download enabled)', 'success', 5000);
+    } catch (err) {
+      console.error('Failed to share portfolio:', err);
+      showToast(`Failed to generate share link: ${err.message}`, 'error', 5000);
+    } finally {
+      setIsSharingBulk(false);
+    }
+  };
+
+  const handleShareBulk = async (allowDownload) => {
+    if (isSharingBulk) return;
+    if (selectedIds.size === 0) return;
+    setIsSharingBulk(true);
+    showToast('Generating shareable link...', 'info', 2000);
+
+    try {
+      const token = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+      const selectedArray = Array.from(selectedIds);
+
+      const res = await fetch('/api/admin-action', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          action: 'create_shared_link',
+          payload: {
+            token,
+            item_ids: selectedArray,
+            allow_download: allowDownload
+          }
+        })
+      });
+
+      if (!res.ok) throw new Error('API request failed');
+
+      const shareUrl = `${window.location.origin}/shared/${token}`;
+      await navigator.clipboard.writeText(shareUrl);
+      const permText = allowDownload ? 'Download enabled' : 'View-only';
+      showToast(`Shared link copied to clipboard! (${permText})`, 'success', 5000);
+      clearSelection();
+    } catch (err) {
+      console.error('Failed to share collection:', err);
+      showToast(`Failed to generate share link: ${err.message}`, 'error', 5000);
+    } finally {
+      setIsSharingBulk(false);
+    }
+  };
+
+  const handleDownloadBulk = async () => {
+    if (selectedIds.size === 0) return;
+    showToast('Preparing ZIP download for selected items...', 'info', 2000);
+
+    try {
+      const selectedItemsList = [...activeItems, ...parkedItems].filter(item => selectedIds.has(item.id));
+      
+      if (selectedItemsList.length === 0) {
+        showToast('No valid illustrations selected.', 'error');
+        return;
+      }
+
+      const zip = new JSZip();
+      let downloaded = 0;
+
+      for (const item of selectedItemsList) {
+        try {
+          const filename = item.src.split('/').pop() || `${item.title || 'artwork'}.jpg`;
+          const res = await fetch(`${item.src}?cache-bust=${Date.now()}`);
+          if (res.ok) {
+            const blob = await res.blob();
+            zip.file(filename, blob);
+          }
+          downloaded++;
+        } catch (err) {
+          console.warn(`Skipping download for ${item.title}:`, err);
+          downloaded++;
+        }
+      }
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      const date = new Date().toISOString().split('T')[0];
+      saveAs(content, `daria-selected-${date}.zip`);
+      showToast(`Downloaded ZIP with ${downloaded} selected file(s)!`, 'success', 5000);
+      clearSelection();
+    } catch (err) {
+      console.error('ZIP generation failed:', err);
+      showToast(`ZIP generation failed: ${err.message}`, 'error', 5000);
+    }
+  };
+
+  const handleDeleteBulk = async () => {
+    if (selectedIds.size === 0) return;
+
+    showConfirm(
+      `Are you sure you want to move the ${selectedIds.size} selected artwork(s) to the trash?`,
+      async () => {
+        showToast('Moving selected items to trash...', 'info', 2000);
+        try {
+          const selectedArray = Array.from(selectedIds);
+          
+          const res = await fetch('/api/admin-action', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+            },
+            body: JSON.stringify({
+              action: 'bulk_move_to_trash',
+              payload: {
+                itemIds: selectedArray,
+                trashItems: trashItems
+              }
+            })
+          });
+
+          if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.error || 'API request failed');
+          }
+
+          const data = await res.json();
+          if (data.success) {
+            showToast(`${selectedIds.size} item(s) moved to trash`, 'success');
+            setTrashItems(data.trashList);
+            clearSelection();
+            loadGalleryItems();
+          }
+        } catch (err) {
+          console.error("Bulk delete failed:", err);
+          showToast(`Bulk delete failed: ${err.message}`, 'error', 6000);
+        }
+      }
+    );
   };
 
   const springConfig = { type: "spring", stiffness: 300, damping: 30 };
@@ -2394,6 +2615,128 @@ export default function AdminPage() {
           color: var(--text-secondary);
           line-height: 1.5;
         }
+
+        /* Selection & Floating Bulk Bar Styles */
+        .select-badge {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.25);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          border: 1px solid rgba(255, 255, 255, 0.4);
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 12;
+          cursor: pointer;
+          opacity: 0;
+          transform: scale(0.9);
+          transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        }
+
+        .select-badge.selected {
+          opacity: 1 !important;
+          transform: scale(1) !important;
+          background: #3b82f6 !important;
+          border-color: #3b82f6 !important;
+        }
+
+        .admin-item-card:hover .select-badge,
+        .parked-item-card:hover .select-badge {
+          opacity: 1;
+          transform: scale(1);
+        }
+
+        .selection-active .select-badge {
+          opacity: 1;
+          transform: scale(1);
+        }
+
+        .admin-item-card.selected,
+        .parked-item-card.selected {
+          border-color: #3b82f6 !important;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3) !important;
+        }
+
+        .floating-bulk-bar {
+          position: fixed;
+          bottom: 24px;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 2rem;
+          padding: 0.8rem 2rem;
+          background: rgba(17, 17, 17, 0.85);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 100px;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+          z-index: 1000;
+          color: white;
+          width: auto;
+          max-width: 90vw;
+        }
+
+        .floating-bulk-info {
+          font-family: var(--font-main);
+          font-size: 0.9rem;
+          font-weight: 500;
+          color: rgba(255, 255, 255, 0.9);
+          white-space: nowrap;
+        }
+
+        .floating-bulk-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+
+        .bulk-action-btn {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          padding: 0.5rem 1rem;
+          border-radius: 50px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: white;
+          cursor: pointer;
+          font-size: 0.8rem;
+          font-weight: 600;
+          font-family: var(--font-main);
+          transition: all 0.2s ease;
+        }
+
+        .bulk-action-btn:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.18);
+          border-color: rgba(255, 255, 255, 0.25);
+          transform: translateY(-1px);
+        }
+
+        .bulk-action-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+
+        .bulk-action-btn.danger {
+          background: rgba(239, 68, 68, 0.15);
+          border-color: rgba(239, 68, 68, 0.25);
+          color: #ef4444;
+        }
+
+        .bulk-action-btn.danger:hover:not(:disabled) {
+          background: rgba(239, 68, 68, 0.25);
+          border-color: rgba(239, 68, 68, 0.4);
+        }
       `}</style>
 
       <AnimatePresence mode="wait">
@@ -2471,6 +2814,34 @@ export default function AdminPage() {
                     <span>{storageUsedGB} GB / 10 GB</span>
                   </div>
                 )}
+                <button 
+                  onClick={handleShareAll} 
+                  disabled={isSharingBulk}
+                  title="Generate a public link for the entire portfolio and copy it to clipboard"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.5rem 1rem', borderRadius: '8px',
+                    background: isSharingBulk ? 'rgba(100,100,100,0.15)' : 'rgba(168, 85, 247, 0.1)',
+                    color: isSharingBulk ? 'var(--text-secondary)' : '#a855f7',
+                    border: '1px solid ' + (isSharingBulk ? 'var(--glass-border)' : 'rgba(168, 85, 247, 0.2)'),
+                    cursor: isSharingBulk ? 'wait' : 'pointer',
+                    fontSize: '0.82rem', fontWeight: 600,
+                    fontFamily: 'var(--font-main)',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {isSharingBulk ? (
+                    <>
+                      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                      <span>Sharing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 size={14} />
+                      Share All
+                    </>
+                  )}
+                </button>
                 <button 
                   onClick={handleDownloadPortfolio} 
                   disabled={isDownloadingPortfolio}
@@ -2698,10 +3069,38 @@ export default function AdminPage() {
 
             {/* Not sure yet Section */}
             <div className="parked-section">
-              <h3 className="section-header" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Lock size={20} />
-                Not sure yet ({parkedItems.length})
-              </h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <h3 className="section-header" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Lock size={20} />
+                  Not sure yet ({parkedItems.length})
+                </h3>
+                {parkedItems.length > 0 && (
+                  <button
+                    onClick={selectAllParked}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.4rem',
+                      background: 'transparent', border: 'none',
+                      color: 'var(--text-secondary)', cursor: 'pointer',
+                      fontSize: '0.85rem', fontWeight: 500,
+                      fontFamily: 'var(--font-main)'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+                  >
+                    {parkedItems.every(item => selectedIds.has(item.id)) ? (
+                      <>
+                        <CheckSquare size={16} />
+                        Deselect All Parked
+                      </>
+                    ) : (
+                      <>
+                        <Square size={16} />
+                        Select All Parked
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
                 Artworks parked here are hidden from the public gallery. You can publish them to the gallery with a single click.
               </p>
@@ -2711,12 +3110,25 @@ export default function AdminPage() {
                   No parked illustrations. Use the "Park in Not Sure Yet" button when uploading.
                 </div>
               ) : (
-                <div className="parked-grid">
+                <div className={`parked-grid ${selectedIds.size > 0 ? 'selection-active' : ''}`}>
                   {parkedItems.map((item) => (
-                    <div key={item.id} className="parked-item-card">
+                    <div 
+                      key={item.id} 
+                      className={`parked-item-card ${selectedIds.has(item.id) ? 'selected' : ''}`}
+                      onClick={() => toggleSelect(item.id)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {/* Selection checkbox overlay */}
+                      <div 
+                        className={`select-badge ${selectedIds.has(item.id) ? 'selected' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); toggleSelect(item.id); }}
+                      >
+                        {selectedIds.has(item.id) && <Check size={12} strokeWidth={3} />}
+                      </div>
+
                       <div style={{ position: 'absolute', top: '8px', right: '8px', display: 'flex', gap: '4px', zIndex: 10 }}>
                         <button 
-                          onClick={() => handleDownloadOriginal(item)}
+                          onClick={(e) => { e.stopPropagation(); handleDownloadOriginal(item); }}
                           className="delete-overlay-btn"
                           style={{ position: 'relative', top: 0, right: 0 }}
                           aria-label="Download Original"
@@ -2725,7 +3137,7 @@ export default function AdminPage() {
                           <Download size={16} />
                         </button>
                         <button 
-                          onClick={() => handleDelete(item)}
+                          onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
                           className="delete-overlay-btn"
                           style={{ position: 'relative', top: 0, right: 0 }}
                           aria-label="Delete artwork"
@@ -2740,7 +3152,7 @@ export default function AdminPage() {
                       <div className="parked-details">
                         <div className="parked-title">{item.title}</div>
                         <button 
-                          onClick={() => handleUnparkItemLocal(item)}
+                          onClick={(e) => { e.stopPropagation(); handleUnparkItemLocal(item); }}
                           className="publish-parked-btn"
                         >
                           <Sparkles size={12} />
@@ -2783,11 +3195,37 @@ export default function AdminPage() {
             {/* List & Edit section */}
             <div className="list-section">
               {/* Section header + mode switcher */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: 0 }}>
-                <h3 className="section-header" style={{ marginBottom: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 className="section-header" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <ImageIcon size={22} />
                   Active Portfolio ({activeItems.length})
                 </h3>
+                {activeItems.length > 0 && (
+                  <button
+                    onClick={selectAllActive}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.4rem',
+                      background: 'transparent', border: 'none',
+                      color: 'var(--text-secondary)', cursor: 'pointer',
+                      fontSize: '0.85rem', fontWeight: 500,
+                      fontFamily: 'var(--font-main)'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+                  >
+                    {activeItems.every(item => selectedIds.has(item.id)) ? (
+                      <>
+                        <CheckSquare size={16} />
+                        Deselect All Active
+                      </>
+                    ) : (
+                      <>
+                        <Square size={16} />
+                        Select All Active
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
 
               {/* 2-button sort pill */}
@@ -2827,14 +3265,24 @@ export default function AdminPage() {
               ) : activeItems.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">The database gallery is empty or loading.</p>
               ) : (
-                <div className="admin-gallery-grid">
+                <div className={`admin-gallery-grid ${selectedIds.size > 0 ? 'selection-active' : ''}`}>
                   {activeItems.map((item, index) => (
                     <div
                       key={item.id}
-                      className="admin-item-card"
+                      className={`admin-item-card ${selectedIds.has(item.id) ? 'selected' : ''}`}
+                      onClick={() => toggleSelect(item.id)}
+                      style={{ cursor: 'pointer' }}
                     >
+                      {/* Selection checkbox overlay */}
+                      <div 
+                        className={`select-badge ${selectedIds.has(item.id) ? 'selected' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); toggleSelect(item.id); }}
+                      >
+                        {selectedIds.has(item.id) && <Check size={12} strokeWidth={3} />}
+                      </div>
+
                       {isNew(item.created_at) && (
-                        <div className="new-badge">
+                        <div className="new-badge" style={{ left: '42px' }}>
                           <span className="new-dot"></span>
                           New
                         </div>
@@ -2843,7 +3291,7 @@ export default function AdminPage() {
                       {/* Action buttons wrapper (top-right) */}
                       <div style={{ position: 'absolute', top: '8px', right: '8px', display: 'flex', gap: '4px', zIndex: 10 }}>
                         <button 
-                          onClick={() => handleDownloadOriginal(item)}
+                          onClick={(e) => { e.stopPropagation(); handleDownloadOriginal(item); }}
                           className="delete-overlay-btn"
                           style={{ position: 'relative', top: 0, right: 0 }}
                           aria-label="Download Original"
@@ -2852,7 +3300,7 @@ export default function AdminPage() {
                           <Download size={16} />
                         </button>
                         <button 
-                          onClick={() => handleDelete(item)}
+                          onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
                           className="delete-overlay-btn"
                           style={{ position: 'relative', top: 0, right: 0 }}
                           aria-label="Delete artwork"
@@ -2864,7 +3312,7 @@ export default function AdminPage() {
 
                       {/* Park button (bottom-left, appears on hover) */}
                       <button
-                        onClick={() => handleParkItemLocal(index)}
+                        onClick={(e) => { e.stopPropagation(); handleParkItemLocal(index); }}
                         className="park-overlay-btn"
                         title="Move to Not Sure Yet"
                       >
@@ -2898,7 +3346,7 @@ export default function AdminPage() {
                           <div className="manual-controls">
                             <button 
                               disabled={index === 0} 
-                              onClick={() => handleMove(index, 'left')}
+                              onClick={(e) => { e.stopPropagation(); handleMove(index, 'left'); }}
                               className="move-btn"
                               title="Move backward"
                             >
@@ -2907,7 +3355,7 @@ export default function AdminPage() {
                             <span className="order-badge-inline">#{index + 1}</span>
                             <button 
                               disabled={index === activeItems.length - 1} 
-                              onClick={() => handleMove(index, 'right')}
+                              onClick={(e) => { e.stopPropagation(); handleMove(index, 'right'); }}
                               className="move-btn"
                               title="Move forward"
                             >
@@ -3141,6 +3589,45 @@ export default function AdminPage() {
           >
             <CheckCircle size={16} />
             <span>Copied {copiedColor} to clipboard!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Bulk Action Bar */}
+      <AnimatePresence>
+        {selectedIds.size > 0 && (
+          <motion.div 
+            className="floating-bulk-bar"
+            initial={{ y: 100, opacity: 0, x: '-50%' }}
+            animate={{ y: 0, opacity: 1, x: '-50%' }}
+            exit={{ y: 100, opacity: 0, x: '-50%' }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          >
+            <div className="floating-bulk-info">
+              {selectedIds.size} item(s) selected
+            </div>
+            <div className="floating-bulk-actions">
+              <button onClick={handleDownloadBulk} className="bulk-action-btn" title="Download selected items as ZIP">
+                <Download size={14} />
+                Download ZIP
+              </button>
+              <button onClick={() => handleShareBulk(true)} className="bulk-action-btn" disabled={isSharingBulk} title="Generate public link with download permission enabled">
+                {isSharingBulk ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
+                Share (Download)
+              </button>
+              <button onClick={() => handleShareBulk(false)} className="bulk-action-btn" disabled={isSharingBulk} title="Generate public link with download permission disabled">
+                {isSharingBulk ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />}
+                Share View-Only
+              </button>
+              <button onClick={handleDeleteBulk} className="bulk-action-btn danger" title="Move selected items to trash">
+                <Trash2 size={14} />
+                Delete
+              </button>
+              <button onClick={clearSelection} className="bulk-action-btn" style={{ background: 'transparent', borderColor: 'transparent', color: 'rgba(255,255,255,0.6)' }} title="Clear selection">
+                <X size={14} />
+                Cancel
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

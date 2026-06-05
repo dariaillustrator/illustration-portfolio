@@ -11,6 +11,7 @@ import AboutPage from './pages/AboutPage';
 import PricingPage from './pages/PricingPage';
 import MobilePreview from './pages/MobilePreview';
 import AdminPage from './pages/AdminPage';
+import SharedPreviewPage from './pages/SharedPreviewPage';
 import NotFoundPage from './pages/NotFoundPage';
 import { UIProvider } from './context/UIContext';
 import ScrollToTop from './components/ScrollToTop';
@@ -33,6 +34,7 @@ function App() {
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/preview" element={<MobilePreview />} />
               <Route path="/admin" element={<AdminPage />} />
+              <Route path="/shared/:token" element={<SharedPreviewPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </main>

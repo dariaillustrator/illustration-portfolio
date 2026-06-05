@@ -215,6 +215,84 @@ export default async function handler(req, res) {
         if (error) throw error;
         return res.status(200).json({ success: true });
       }
+      
+      case 'create_shared_link': {
+        const { token, item_ids, allow_download } = payload;
+        const { error } = await supabase
+          .from('gallery_items')
+          .insert([{
+            title: `__site_shared_link__:${token}`,
+            src: JSON.stringify({
+              item_ids,
+              allow_download,
+              created_at: new Date().toISOString()
+            }),
+            is_parked: true,
+            aspect_ratio: 0,
+            hue: 0,
+            saturation: 0,
+            lightness: 0
+          }]);
+
+        if (error) throw error;
+        return res.status(200).json({ success: true });
+      }
+
+      case 'bulk_move_to_trash': {
+        const { itemIds, trashItems } = payload;
+
+        // 1. Fetch details of all items to move
+        const { data: itemsData, error: fetchError } = await supabase
+          .from('gallery_items')
+          .select('*')
+          .in('id', itemIds);
+
+        if (fetchError) throw fetchError;
+
+        // 2. Delete them from gallery_items table
+        const { error: delError } = await supabase
+          .from('gallery_items')
+          .delete()
+          .in('id', itemIds);
+
+        if (delError) throw delError;
+
+        // 3. Prepare new items with deleted_at timestamp
+        const newTrashedItems = itemsData.map(item => ({
+          ...item,
+          deleted_at: new Date().toISOString()
+        }));
+        const newTrashList = [...trashItems, ...newTrashedItems];
+
+        // 4. Update the __site_trash__ row
+        const { data: existingTrash } = await supabase
+          .from('gallery_items')
+          .select('id')
+          .eq('title', '__site_trash__');
+
+        if (existingTrash && existingTrash.length > 0) {
+          const { error: updateError } = await supabase
+            .from('gallery_items')
+            .update({ src: JSON.stringify(newTrashList) })
+            .eq('title', '__site_trash__');
+          if (updateError) throw updateError;
+        } else {
+          const { error: insertError } = await supabase
+            .from('gallery_items')
+            .insert([{
+              title: '__site_trash__',
+              src: JSON.stringify(newTrashList),
+              is_parked: true,
+              aspect_ratio: 0,
+              hue: 0,
+              saturation: 0,
+              lightness: 0
+            }]);
+          if (insertError) throw insertError;
+        }
+
+        return res.status(200).json({ success: true, trashList: newTrashList });
+      }
 
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
