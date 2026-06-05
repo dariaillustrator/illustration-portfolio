@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 
 // Artworks sorted by color analysis (Hue-based) with their aspect ratios
 const galleryFiles = [
@@ -44,7 +45,7 @@ const galleryFiles = [
   { src: "Le_Grand_Meaulnes.jpg", aspectRatio: 0.6123456790123457 }
 ];
 
-const artworks = galleryFiles.map((fileData, index) => {
+const staticArtworks = galleryFiles.map((fileData, index) => {
   let title = fileData.src.split('.')[0]
     .replace(/Untitled_Artwork/g, 'Artwork')
     .replace(/_/g, ' ')
@@ -64,6 +65,7 @@ const artworks = galleryFiles.map((fileData, index) => {
 });
 
 export default function Gallery() {
+  const [artworks, setArtworks] = useState(staticArtworks);
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [displayIdx, setDisplayIdx] = useState(null);
   const [imageOpacity, setImageOpacity] = useState(1);
@@ -77,6 +79,112 @@ export default function Gallery() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const sortArtworks = (list) => {
+    return [...list].sort((a, b) => {
+      const hA = a.hue ?? 0;
+      const hB = b.hue ?? 0;
+      const sA = a.saturation ?? 0;
+      const sB = b.saturation ?? 0;
+      const lA = a.lightness ?? 0;
+      const lB = b.lightness ?? 0;
+      
+      if (hA !== hB) return hA - hB;
+      if (sA !== sB) return sA - sB;
+      return lA - lB;
+    });
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadArtworks() {
+      try {
+        const { data, error } = await supabase
+          .from('gallery_items')
+          .select('*')
+          .order('hue', { ascending: true })
+          .order('saturation', { ascending: true })
+          .order('lightness', { ascending: true });
+        
+        if (error) throw error;
+        
+        if (data && data.length > 0 && isMounted) {
+          const loaded = data.map((item) => ({
+            id: item.id,
+            title: item.title,
+            year: item.created_at ? new Date(item.created_at).getFullYear().toString() : '2026',
+            medium: 'Fine Art Print',
+            category: 'Illustration',
+            imgUrl: item.src,
+            description: 'Part of the archival collection exploring nature and ethereal forms.',
+            aspectRatio: item.aspect_ratio,
+            hue: item.hue,
+            saturation: item.saturation,
+            lightness: item.lightness
+          }));
+          setArtworks(loaded);
+        }
+      } catch (err) {
+        console.warn("Failed to load artworks from Supabase database. Falling back to static local assets:", err.message);
+      }
+    }
+
+    loadArtworks();
+
+    // Subscribe to real-time database changes
+    const channel = supabase
+      .channel('gallery_changes_channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gallery_items' }, (payload) => {
+        if (!isMounted) return;
+        
+        if (payload.eventType === 'INSERT') {
+          const newItem = {
+            id: payload.new.id,
+            title: payload.new.title,
+            year: payload.new.created_at ? new Date(payload.new.created_at).getFullYear().toString() : '2026',
+            medium: 'Fine Art Print',
+            category: 'Illustration',
+            imgUrl: payload.new.src,
+            description: 'Part of the archival collection exploring nature and ethereal forms.',
+            aspectRatio: payload.new.aspect_ratio,
+            hue: payload.new.hue,
+            saturation: payload.new.saturation,
+            lightness: payload.new.lightness
+          };
+          setArtworks((prev) => {
+            if (prev.some(item => item.id === newItem.id)) return prev;
+            return sortArtworks([...prev, newItem]);
+          });
+        } else if (payload.eventType === 'DELETE') {
+          setArtworks((prev) => prev.filter(item => item.id !== payload.old.id));
+        } else if (payload.eventType === 'UPDATE') {
+          setArtworks((prev) => {
+            const updated = prev.map(item => {
+              if (item.id === payload.new.id) {
+                return {
+                  ...item,
+                  title: payload.new.title,
+                  imgUrl: payload.new.src,
+                  aspectRatio: payload.new.aspect_ratio,
+                  hue: payload.new.hue,
+                  saturation: payload.new.saturation,
+                  lightness: payload.new.lightness
+                };
+              }
+              return item;
+            });
+            return sortArtworks(updated);
+          });
+        }
+      })
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   useEffect(() => {
     // Preload and decode all gallery images during intro to prevent scroll jank
     artworks.forEach((art) => {
@@ -86,7 +194,7 @@ export default function Gallery() {
         img.decode().catch(() => {});
       }
     });
-  }, []);
+  }, [artworks]);
 
   // Preload and transition target image on selection change
   useEffect(() => {

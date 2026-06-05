@@ -10,6 +10,7 @@ import HomePage from './pages/HomePage';
 import AboutPage from './pages/AboutPage';
 import PricingPage from './pages/PricingPage';
 import MobilePreview from './pages/MobilePreview';
+import AdminPage from './pages/AdminPage';
 import { UIProvider } from './context/UIContext';
 import ScrollToTop from './components/ScrollToTop';
 
@@ -30,6 +31,7 @@ function App() {
               <Route path="/about" element={<AboutPage />} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/preview" element={<MobilePreview />} />
+              <Route path="/admin" element={<AdminPage />} />
             </Routes>
           </main>
           <SiteFooter />
