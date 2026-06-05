@@ -2398,7 +2398,7 @@ export default function AdminPage() {
                     className={`sort-pill-btn ${sortingMode === 'manual' ? 'active' : ''}`}
                     onClick={() => handleModeSwitch('manual')}
                   >
-                    <GripVertical size={13} />
+                    <span style={{ fontSize: '1em', lineHeight: 1 }}>⠿</span>
                     Manual
                   </button>
                 </div>
