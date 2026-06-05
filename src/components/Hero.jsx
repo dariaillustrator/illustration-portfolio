@@ -6,6 +6,7 @@ class Comet {
     this.width = width;
     this.height = height;
     this.delay = 0; // delay cooldown to stagger falls in time
+    this.isFirstComet = false;
   }
 
   reset(init = false, otherComets = []) {
@@ -16,10 +17,11 @@ class Comet {
     this.vx = -this.speed * Math.cos(this.angle); // moving left
     this.vy = this.speed * Math.sin(this.angle);  // moving down
     
-    this.size = 1.0 + Math.random() * 1.0; 
+    this.isFirstComet = false;
+    this.size = 1.2 + Math.random() * 1.2; 
     this.history = [];
     this.maxHistory = 50 + Math.floor(Math.random() * 30); // long trail (50 to 80 steps)
-    this.opacity = 0.4 + Math.random() * 0.4; 
+    this.opacity = 0.55 + Math.random() * 0.35; 
 
     // Find a spawn position that doesn't overlap path with other active comets
     let attempts = 0;
@@ -123,9 +125,13 @@ class Comet {
     this.y = spawnY;
   }
 
-  draw(ctx) {
+  draw(ctx, globalFade = 1.0) {
     // Hide comet if it is in delay cooldown
     if (this.delay > 0 || this.history.length < 2) return;
+
+    const fade = this.isFirstComet ? 1.0 : globalFade;
+    const currentOpacity = this.opacity * fade;
+    const currentGlow = 8 * fade;
 
     // Draw straight diagonal trail
     ctx.beginPath();
@@ -140,9 +146,9 @@ class Comet {
     const tailY = this.history[this.history.length - 1].y;
 
     const grad = ctx.createLinearGradient(headX, headY, tailX, tailY);
-    grad.addColorStop(0, `rgba(255, 255, 255, ${this.opacity})`);
-    grad.addColorStop(0.4, `rgba(255, 255, 255, ${this.opacity * 0.7})`);
-    grad.addColorStop(0.8, `rgba(237, 181, 160, ${this.opacity * 0.25})`); // apricot-peach hue
+    grad.addColorStop(0, `rgba(255, 255, 255, ${currentOpacity})`);
+    grad.addColorStop(0.4, `rgba(255, 255, 255, ${currentOpacity * 0.7})`);
+    grad.addColorStop(0.8, `rgba(237, 181, 160, ${currentOpacity * 0.25})`); // apricot-peach hue
     grad.addColorStop(1, 'rgba(237, 181, 160, 0)');
 
     ctx.strokeStyle = grad;
@@ -154,7 +160,7 @@ class Comet {
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
-    ctx.shadowBlur = 6;
+    ctx.shadowBlur = currentGlow;
     ctx.shadowColor = '#ffffff';
     ctx.fill();
     ctx.shadowBlur = 0;
@@ -245,12 +251,17 @@ export default function Hero() {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
+    const startTime = Date.now();
+
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
+      const elapsed = (Date.now() - startTime) / 1000;
+      const globalFade = Math.min(1, elapsed / 5.0);
+
       comets.forEach((comet) => {
         comet.update(comets);
-        comet.draw(ctx);
+        comet.draw(ctx, globalFade);
       });
 
       animationFrameId = requestAnimationFrame(animate);
