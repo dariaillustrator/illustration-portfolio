@@ -19,7 +19,7 @@ export default async function handler(req, res) {
 
   // Security: Check Authorization Header
   const authHeader = req.headers.authorization;
-  const apiSecret = process.env.ADMIN_API_SECRET || '7263';
+  const apiSecret = process.env.ADMIN_API_SECRET || '090516';
   if (!authHeader || authHeader !== `Bearer ${apiSecret}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }

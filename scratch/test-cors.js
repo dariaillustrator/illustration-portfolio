@@ -14,35 +14,56 @@ try {
   console.error('Failed to read .env', e);
 }
 
-const supabaseUrl = env.VITE_SUPABASE_URL;
-const supabaseServiceKey = env.SUPABASE_SERVICE_ROLE_KEY;
+const accountId = env.CLOUDFLARE_ACCOUNT_ID;
+const apiToken = env.CLOUDFLARE_API_TOKEN;
+const bucketName = env.CLOUDFLARE_R2_BUCKET || 'gallery';
+const publicUrlBase = env.CLOUDFLARE_R2_PUBLIC_URL;
 
 async function test() {
-  // We can query Supabase using native fetch
-  const resDb = await fetch(`${supabaseUrl}/rest/v1/gallery_items?select=src&limit=1`, {
-    headers: {
-      'apikey': supabaseServiceKey,
-      'Authorization': `Bearer ${supabaseServiceKey}`
+  let allObjects = [];
+  let cursor = null;
+  let hasMore = true;
+
+  while (hasMore) {
+    let url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucketName}/objects`;
+    if (cursor) {
+      url += `?cursor=${encodeURIComponent(cursor)}`;
     }
-  });
-  const data = await resDb.json();
-  if (!data || data.length === 0) {
-    console.log('No items in database');
-    return;
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${apiToken}`
+      }
+    });
+
+    const data = await response.json();
+    if (data.result && Array.isArray(data.result)) {
+      allObjects = allObjects.concat(data.result);
+    }
+    if (data.result_info && data.result_info.is_truncated) {
+      cursor = data.result_info.cursor;
+    } else {
+      hasMore = false;
+    }
   }
-  const url = data[0].src;
-  console.log('Testing URL:', url);
-  
-  // Make a request with Origin header to simulate browser fetch
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Origin': 'https://illustration-portfolio.vercel.app'
+
+  const cleanBase = publicUrlBase.endsWith('/') ? publicUrlBase.slice(0, -1) : publicUrlBase;
+
+  console.log(`Testing fetch for ${allObjects.length} files...`);
+  for (const obj of allObjects) {
+    const fileUrl = `${cleanBase}/${obj.key}`;
+    try {
+      const res = await fetch(fileUrl, {
+        method: 'GET',
+        headers: {
+          'Origin': 'https://illustration-portfolio.vercel.app'
+        }
+      });
+      console.log(`Key: ${obj.key.padEnd(45)} | Status: ${res.status} | CORS Allow-Origin: ${res.headers.get('access-control-allow-origin')}`);
+    } catch (e) {
+      console.log(`Key: ${obj.key.padEnd(45)} | Fetch Error: ${e.message}`);
     }
-  });
-  console.log('Status:', res.status);
-  console.log('Access-Control-Allow-Origin:', res.headers.get('access-control-allow-origin'));
-  console.log('All Headers:', [...res.headers.entries()]);
+  }
 }
 
 test();

@@ -666,16 +666,16 @@ export default function AdminPage() {
 
   const handleKeyPress = (num) => {
     setErrorMsg('');
-    if (passcode.length < 4) {
+    if (passcode.length < 6) {
       const nextPasscode = passcode + num;
       setPasscode(nextPasscode);
-      if (nextPasscode === '7263') {
+      if (nextPasscode === '090516') {
         setTimeout(() => {
           setIsAuthenticated(true);
           sessionStorage.setItem('admin_token', nextPasscode);
           loadGalleryItems();
         }, 300);
-      } else if (nextPasscode.length === 4) {
+      } else if (nextPasscode.length === 6) {
         // Wrong passcode trigger shake
         setTimeout(() => {
           setIsShaking(true);
@@ -2415,7 +2415,7 @@ export default function AdminPage() {
             </div>
 
             <div className="lock-dots">
-              {[0, 1, 2, 3].map((idx) => (
+              {[0, 1, 2, 3, 4, 5].map((idx) => (
                 <div 
                   key={idx} 
                   className={`lock-dot ${passcode.length > idx ? 'active' : ''}`}
