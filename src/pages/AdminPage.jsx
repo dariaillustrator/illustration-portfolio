@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Lock, CheckCircle, AlertCircle, 
   Loader2, Sparkles, LogOut, X, Image as ImageIcon, ChevronRight,
-  RefreshCw, ArrowLeft, ArrowRight, Save
+  RefreshCw, ChevronLeft, Save
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -296,13 +296,15 @@ export default function AdminPage() {
     }
   };
 
-  // Move item left/right in manual mode
+  // Move item left or right in the grid (manual reorder)
   const handleMove = (index, direction) => {
-    const newItems = [...activeItems];
     const targetIndex = direction === 'left' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= newItems.length) return;
-    [newItems[index], newItems[targetIndex]] = [newItems[targetIndex], newItems[index]];
-    setActiveItems(newItems);
+    if (targetIndex < 0 || targetIndex >= activeItems.length) return;
+    setActiveItems(prev => {
+      const updated = [...prev];
+      [updated[index], updated[targetIndex]] = [updated[targetIndex], updated[index]];
+      return updated;
+    });
     setSortingMode('manual');
     setIsDirty(true);
   };
@@ -1442,54 +1444,54 @@ export default function AdminPage() {
           pointer-events: none;
         }
 
-        /* ── Manual reorder controls ── */
-        .admin-item-reorder {
+        /* ── Manual mode controls ── */
+        .manual-controls {
           display: flex;
           align-items: center;
           justify-content: space-between;
           margin-top: 0.8rem;
           padding-top: 0.8rem;
           border-top: 1px solid var(--border);
-          gap: 0.35rem;
+          gap: 0.3rem;
         }
 
-        .reorder-btn {
+        .move-btn {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 0.25rem;
-          flex: 1;
-          padding: 0.45rem 0.5rem;
-          font-size: 0.72rem;
-          font-weight: 600;
-          font-family: var(--font-main);
-          border-radius: 10px;
+          width: 30px;
+          height: 30px;
+          padding: 0;
+          border-radius: 50%;
           border: 1px solid var(--border);
           background: transparent;
           color: var(--text-secondary);
           cursor: pointer;
-          transition: all 0.15s ease;
+          transition: all 0.2s ease;
+          flex-shrink: 0;
         }
 
-        .reorder-btn:hover:not(:disabled) {
+        .move-btn:hover:not(:disabled) {
           background: var(--text-primary);
           color: var(--bg-primary);
           border-color: var(--text-primary);
         }
 
-        .reorder-btn:disabled {
-          opacity: 0.2;
+        .move-btn:disabled {
+          opacity: 0.15;
           cursor: not-allowed;
         }
 
-        .reorder-pos {
-          font-size: 0.68rem;
+        .order-badge-inline {
+          font-size: 0.72rem;
           font-weight: 700;
           color: var(--text-secondary);
-          background: rgba(var(--text-primary-rgb), 0.05);
-          padding: 0.2rem 0.5rem;
-          border-radius: 6px;
-          white-space: nowrap;
+          background: rgba(var(--text-primary-rgb), 0.06);
+          padding: 0.2rem 0.55rem;
+          border-radius: 8px;
+          border: 1px solid var(--border);
+          min-width: 36px;
+          text-align: center;
         }
 
         /* ── Order number badge (manual) ── */
@@ -2411,7 +2413,10 @@ export default function AdminPage() {
               ) : (
                 <div className="admin-gallery-grid">
                   {activeItems.map((item, index) => (
-                    <div key={item.id} className="admin-item-card">
+                    <div
+                      key={item.id}
+                      className="admin-item-card"
+                    >
                       {isNew(item.created_at) && (
                         <div className="new-badge">
                           <span className="new-dot"></span>
@@ -2438,11 +2443,6 @@ export default function AdminPage() {
                         Not sure yet
                       </button>
 
-                      {/* Order badge (bottom-right, manual mode only) */}
-                      {sortingMode === 'manual' && (
-                        <span className="order-badge">#{index + 1}</span>
-                      )}
-
                       <div className="admin-item-image-wrapper">
                         <img src={item.src} alt={item.title} className="admin-item-img" />
                       </div>
@@ -2466,21 +2466,23 @@ export default function AdminPage() {
 
                         {/* Arrow controls — only in manual mode */}
                         {sortingMode === 'manual' && (
-                          <div className="admin-item-reorder">
-                            <button
-                              disabled={index === 0}
+                          <div className="manual-controls">
+                            <button 
+                              disabled={index === 0} 
                               onClick={() => handleMove(index, 'left')}
-                              className="reorder-btn"
+                              className="move-btn"
+                              title="Move backward"
                             >
-                              <ArrowLeft size={13} />
+                              <ChevronLeft size={16} />
                             </button>
-                            <span className="reorder-pos">#{index + 1}</span>
-                            <button
-                              disabled={index === activeItems.length - 1}
+                            <span className="order-badge-inline">#{index + 1}</span>
+                            <button 
+                              disabled={index === activeItems.length - 1} 
                               onClick={() => handleMove(index, 'right')}
-                              className="reorder-btn"
+                              className="move-btn"
+                              title="Move forward"
                             >
-                              <ArrowRight size={13} />
+                              <ChevronRight size={16} />
                             </button>
                           </div>
                         )}
@@ -2589,8 +2591,7 @@ export default function AdminPage() {
         )}
       </AnimatePresence>
 
-
-      {/* Floating sticky save bar — appears whenever there are unsaved changes */}
+      {/* Floating sticky save bar */}
       <AnimatePresence>
         {isDirty && isAuthenticated && (
           <motion.div
