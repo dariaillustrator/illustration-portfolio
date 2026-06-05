@@ -66,7 +66,7 @@ export default function HomePage() {
       setTimeout(() => {
         const gallery = document.getElementById('gallery');
         if (gallery) gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
+      }, 150);
     }
   }, [location]);
 

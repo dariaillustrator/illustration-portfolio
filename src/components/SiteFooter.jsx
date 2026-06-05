@@ -45,12 +45,15 @@ export default function SiteFooter() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const handleGalleryClick = () => {
+  const handleGalleryClick = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (location.pathname !== '/') {
       navigate('/', { state: { skipIntroDelay: true, scrollToGallery: true } });
     } else {
-      const gallery = document.getElementById('gallery');
-      if (gallery) gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => {
+        const gallery = document.getElementById('gallery');
+        if (gallery) gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
     }
   };
 

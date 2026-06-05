@@ -159,8 +159,10 @@ export default function SiteHeader() {
     if (location.pathname !== '/') {
       navigate('/', { state: { skipIntroDelay: true, scrollToGallery: true } });
     } else {
-      const gallery = document.getElementById('gallery');
-      if (gallery) gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => {
+        const gallery = document.getElementById('gallery');
+        if (gallery) gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
     }
   };
 
