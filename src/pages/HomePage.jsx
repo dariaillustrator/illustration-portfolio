@@ -4,7 +4,7 @@ import Hero from '../components/Hero';
 import Gallery from '../components/Gallery';
 import Services from '../components/Services';
 import { ArrowUp, ArrowRight } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import ScrollReveal from '../components/ScrollReveal';
 import { useUI } from '../context/UIContext';
 
@@ -59,6 +59,16 @@ function BottomGradient() {
 }
 
 export default function HomePage() {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state?.scrollToGallery) {
+      setTimeout(() => {
+        const gallery = document.getElementById('gallery');
+        if (gallery) gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  }, [location]);
 
   const scrollToGalleryStart = () => {
     const gallery = document.getElementById('gallery');

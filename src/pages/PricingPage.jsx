@@ -6,11 +6,11 @@ import { useUI } from '../context/UIContext';
 export default function PricingPage() {
   const { openContact } = useUI();
   const [illustrations, setIllustrations] = useState(1);
-  const [total, setTotal] = useState(150);
+  const [total, setTotal] = useState(200);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
 
   useEffect(() => {
-    setTotal(illustrations * 150);
+    setTotal(illustrations * 200);
   }, [illustrations]);
 
   useEffect(() => {
@@ -90,7 +90,7 @@ export default function PricingPage() {
             <div style={{ background: 'rgba(120,120,120,0.05)', padding: windowWidth < 768 ? '1rem' : '1.5rem', borderRadius: '8px', display: 'flex', gap: windowWidth < 768 ? '0.7rem' : '1rem', border: '1px solid rgba(120,120,120,0.1)' }}>
               <Info size={18} style={{ flexShrink: 0, marginTop: '2px', opacity: 0.4 }} />
               <p style={{ fontSize: '0.85rem', opacity: 0.6, lineHeight: 1.5 }}>
-                <strong>Note:</strong> Rate is based on $150 per illustration. This interactive quote covers creation, digital delivery, and personal licensing. Bulk rates can be discussed for larger projects.
+                <strong>Note:</strong> Rate is based on $200 per illustration. This interactive quote covers creation, digital delivery, and personal licensing. Bulk rates can be discussed for larger projects.
               </p>
             </div>
           </div>

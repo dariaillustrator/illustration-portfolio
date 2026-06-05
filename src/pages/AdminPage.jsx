@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, Trash2, Lock, CheckCircle, AlertCircle, 
   Loader2, Sparkles, LogOut, X, Image as ImageIcon, ChevronRight,
-  RefreshCw, ChevronLeft, Save
+  RefreshCw, ChevronLeft, Save, Download
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -183,6 +183,8 @@ export default function AdminPage() {
   // Gallery items states
   const [activeItems, setActiveItems] = useState([]);
   const [parkedItems, setParkedItems] = useState([]);
+  const [trashItems, setTrashItems] = useState([]);
+  const [storageUsedGB, setStorageUsedGB] = useState(null);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [sortingMode, setSortingMode] = useState('chromatic_asc'); // 'chromatic_asc', 'chromatic_desc', 'manual'
   const [isDirty, setIsDirty] = useState(false);
@@ -272,6 +274,20 @@ export default function AdminPage() {
     }
   };
 
+  const loadStats = async () => {
+    try {
+      const response = await fetch('/api/r2-stats', {
+        headers: { 'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setStorageUsedGB(data.totalSizeGB);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const loadGalleryItems = async () => {
     setIsLoadingItems(true);
     try {
@@ -290,8 +306,55 @@ export default function AdminPage() {
       }
       setSortingMode(mode);
 
-      // Filter out settings row
-      const filtered = (data || []).filter(item => item.title !== '__site_settings__');
+      // Extract trash row
+      const trashItem = data.find(item => item.title === '__site_trash__');
+      let currentTrash = [];
+      let trashNeedsCleanup = false;
+
+      if (trashItem && trashItem.src) {
+        try {
+          currentTrash = JSON.parse(trashItem.src);
+          const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+          const validTrash = [];
+
+          for (const item of currentTrash) {
+            const deletedAtTime = new Date(item.deleted_at).getTime();
+            if (deletedAtTime < thirtyDaysAgo) {
+              // Permanently delete from R2
+              try {
+                await fetch('/api/delete-from-r2', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+                  },
+                  body: JSON.stringify({ id: item.id, src: item.src })
+                });
+                trashNeedsCleanup = true;
+              } catch (delErr) {
+                console.error("Failed to cleanup old trash item:", delErr);
+                validTrash.push(item); // keep it if delete failed
+              }
+            } else {
+              validTrash.push(item);
+            }
+          }
+
+          if (trashNeedsCleanup) {
+            currentTrash = validTrash;
+            await supabase
+              .from('gallery_items')
+              .update({ src: JSON.stringify(currentTrash) })
+              .eq('title', '__site_trash__');
+          }
+        } catch (e) {
+          console.error("Failed to parse trash items", e);
+        }
+      }
+      setTrashItems(currentTrash);
+
+      // Filter out special rows
+      const filtered = (data || []).filter(item => !item.title.startsWith('__site_'));
       const active = filtered.filter(item => !item.is_parked);
       const parked = filtered.filter(item => item.is_parked);
 
@@ -300,6 +363,7 @@ export default function AdminPage() {
       setIsDirty(false);
       
       await loadRequests();
+      await loadStats();
     } catch (err) {
       console.error("Error loading gallery items:", err.message);
     } finally {
@@ -627,35 +691,48 @@ export default function AdminPage() {
       setUploadStep('Optimizing for web (resizing and compression)...');
       const optimizedBlob = await optimizeImage(selectedFile, 1600, 0.85);
 
-      // 2. Convert Blob to Base64
-      setUploadStep('Preparing file for upload...');
-      const reader = new FileReader();
+      // 2. Convert to Base64
+      setUploadStep('Preparing files for upload...');
       
       const fileExt = 'jpg'; // We compress to JPEG
       const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+      const originalExt = selectedFile.name.split('.').pop() || 'jpg';
+      const originalFileName = `original_${fileName.split('.')[0]}.${originalExt}`;
 
-      reader.onloadend = async () => {
-        try {
-          const base64data = reader.result.split(',')[1];
-          setUploadStep('Uploading safely to Cloudflare R2 and Supabase...');
+      const readAsBase64 = (fileOrBlob) => {
+        return new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onloadend = () => resolve(r.result.split(',')[1]);
+          r.onerror = reject;
+          r.readAsDataURL(fileOrBlob);
+        });
+      };
 
-          const response = await fetch('/api/upload-to-r2', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
-            },
-            body: JSON.stringify({
-              image: base64data,
-              filename: fileName,
-              title: customTitle || 'Untitled',
-              aspect_ratio: analysisMeta.aspect_ratio,
-              hue: analysisMeta.hue,
-              saturation: analysisMeta.saturation,
-              lightness: analysisMeta.lightness,
-              is_parked: shouldPark
-            })
-          });
+      try {
+        const base64data = await readAsBase64(optimizedBlob);
+        const originalBase64 = await readAsBase64(selectedFile);
+
+        setUploadStep('Uploading safely to Cloudflare R2 and Supabase...');
+
+        const response = await fetch('/api/upload-to-r2', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+          },
+          body: JSON.stringify({
+            image: base64data,
+            original_image: originalBase64,
+            filename: fileName,
+            original_filename: originalFileName,
+            title: customTitle || 'Untitled',
+            aspect_ratio: analysisMeta.aspect_ratio,
+            hue: analysisMeta.hue,
+            saturation: analysisMeta.saturation,
+            lightness: analysisMeta.lightness,
+            is_parked: shouldPark
+          })
+        });
 
           const resData = await response.json();
           if (!response.ok) {
@@ -700,13 +777,6 @@ export default function AdminPage() {
           setIsUploading(false);
           setUploadStep('');
         }
-      };
-
-      reader.onerror = () => {
-        throw new Error('Could not convert image.');
-      };
-
-      reader.readAsDataURL(optimizedBlob);
 
     } catch (err) {
       console.error(err);
@@ -716,28 +786,102 @@ export default function AdminPage() {
     }
   };
 
-  const handleDelete = async (id, src) => {
-    if (!window.confirm("Are you sure you want to delete this artwork? It will be removed immediately from the public website.")) return;
+  const handleDelete = async (item) => {
+    if (!window.confirm("Are you sure you want to move this artwork to the Trash? It will be removed from the public website but can be restored for 30 days.")) return;
 
     try {
-      const response = await fetch('/api/delete-from-r2', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
-        },
-        body: JSON.stringify({ id, src })
-      });
+      // 1. Delete from gallery_items
+      const { error: delError } = await supabase
+        .from('gallery_items')
+        .delete()
+        .eq('id', item.id);
+      
+      if (delError) throw delError;
 
-      const resData = await response.json();
-      if (!response.ok) {
-        throw new Error(resData.error || 'Failed to delete item.');
+      // 2. Add to __site_trash__
+      const trashedItem = { ...item, deleted_at: new Date().toISOString() };
+      const newTrash = [...trashItems, trashedItem];
+      
+      // Update or insert __site_trash__
+      const { data: existingTrash } = await supabase
+        .from('gallery_items')
+        .select('id')
+        .eq('title', '__site_trash__');
+
+      if (existingTrash && existingTrash.length > 0) {
+        await supabase
+          .from('gallery_items')
+          .update({ src: JSON.stringify(newTrash) })
+          .eq('title', '__site_trash__');
+      } else {
+        await supabase
+          .from('gallery_items')
+          .insert([{
+            title: '__site_trash__',
+            src: JSON.stringify(newTrash),
+            is_parked: true
+          }]);
       }
 
       loadGalleryItems();
     } catch (err) {
       console.error(err);
       alert(`Failed to delete item: ${err.message}`);
+    }
+  };
+
+  const handleRestore = async (item) => {
+    try {
+      // 1. Insert back to gallery_items
+      const { deleted_at, ...originalItem } = item;
+      const { error: insertError } = await supabase
+        .from('gallery_items')
+        .insert([originalItem]);
+        
+      if (insertError) throw insertError;
+
+      // 2. Remove from __site_trash__
+      const newTrash = trashItems.filter(t => t.id !== item.id);
+      await supabase
+        .from('gallery_items')
+        .update({ src: JSON.stringify(newTrash) })
+        .eq('title', '__site_trash__');
+
+      loadGalleryItems();
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to restore item: ${err.message}`);
+    }
+  };
+
+  const handleDownloadOriginal = (item) => {
+    if (!item || !item.src) return;
+    try {
+      const urlObj = new URL(item.src);
+      const urlParts = urlObj.pathname.split('/');
+      const filename = urlParts.pop();
+      const baseUrl = urlObj.origin + urlParts.join('/');
+      
+      let originalExt = 'jpg';
+      if (urlObj.searchParams.has('oext')) {
+        originalExt = urlObj.searchParams.get('oext');
+      }
+
+      const baseName = filename.split('.')[0];
+      const originalFilename = `original_${baseName}.${originalExt}`;
+      const originalUrl = `${baseUrl}/${originalFilename}`;
+      
+      // Trigger download
+      const link = document.createElement('a');
+      link.href = originalUrl;
+      link.download = originalFilename;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      console.error("Failed to trigger download", e);
+      alert("Could not download the original image.");
     }
   };
 
@@ -2154,10 +2298,18 @@ export default function AdminPage() {
                   Upload and optimize new illustrations directly into the portfolio.
                 </p>
               </div>
-              <button onClick={handleLogout} className="logout-btn">
-                <LogOut size={16} />
-                Sign Out
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                {storageUsedGB !== null && (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Storage Used</span>
+                    <span>{storageUsedGB} GB / 10 GB</span>
+                  </div>
+                )}
+                <button onClick={handleLogout} className="logout-btn">
+                  <LogOut size={16} />
+                  Sign Out
+                </button>
+              </div>
             </div>
 
             {errorMsg && (
@@ -2324,13 +2476,26 @@ export default function AdminPage() {
                 <div className="parked-grid">
                   {parkedItems.map((item) => (
                     <div key={item.id} className="parked-item-card">
-                      <button 
-                        onClick={() => handleDelete(item.id, item.src)}
-                        className="delete-overlay-btn"
-                        aria-label="Delete artwork"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div style={{ position: 'absolute', top: '8px', right: '8px', display: 'flex', gap: '4px', zIndex: 10 }}>
+                        <button 
+                          onClick={() => handleDownloadOriginal(item)}
+                          className="delete-overlay-btn"
+                          style={{ position: 'relative', top: 0, right: 0 }}
+                          aria-label="Download Original"
+                          title="Download high-quality original"
+                        >
+                          <Download size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(item)}
+                          className="delete-overlay-btn"
+                          style={{ position: 'relative', top: 0, right: 0 }}
+                          aria-label="Delete artwork"
+                          title="Move to trash"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                       <div className="parked-image-wrapper">
                         <img src={item.src} alt={item.title} className="parked-img" />
                       </div>
@@ -2437,14 +2602,27 @@ export default function AdminPage() {
                         </div>
                       )}
 
-                      {/* Delete button (top-right, appears on hover) */}
-                      <button 
-                        onClick={() => handleDelete(item.id, item.src)}
-                        className="delete-overlay-btn"
-                        aria-label="Delete artwork"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {/* Action buttons wrapper (top-right) */}
+                      <div style={{ position: 'absolute', top: '8px', right: '8px', display: 'flex', gap: '4px', zIndex: 10 }}>
+                        <button 
+                          onClick={() => handleDownloadOriginal(item)}
+                          className="delete-overlay-btn"
+                          style={{ position: 'relative', top: 0, right: 0 }}
+                          aria-label="Download Original"
+                          title="Download high-quality original"
+                        >
+                          <Download size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(item)}
+                          className="delete-overlay-btn"
+                          style={{ position: 'relative', top: 0, right: 0 }}
+                          aria-label="Delete artwork"
+                          title="Move to trash"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
 
                       {/* Park button (bottom-left, appears on hover) */}
                       <button
@@ -2600,6 +2778,54 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
+
+            {/* Trash Bin Section */}
+            <div className="features-section" style={{ marginTop: '4rem', padding: '2rem 0', borderTop: '1px dashed var(--glass-border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginBottom: '1.5rem' }}>
+                <div style={{ padding: '0.5rem', background: 'rgba(255, 60, 60, 0.1)', color: '#ff3c3c', borderRadius: '8px' }}>
+                  <Trash2 size={20} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '1.3rem', fontWeight: 600 }}>Trash (30 Days)</h2>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Items are kept here for 30 days before permanent deletion from Cloudflare R2.</p>
+                </div>
+              </div>
+
+              {trashItems.length === 0 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', background: 'rgba(0,0,0,0.02)', border: '1px dashed var(--glass-border)', borderRadius: '12px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  The trash is empty.
+                </div>
+              ) : (
+                <div className="grid-container" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '1rem' }}>
+                  {trashItems.map((item) => {
+                    const daysLeft = 30 - Math.floor((Date.now() - new Date(item.deleted_at).getTime()) / (1000 * 60 * 60 * 24));
+                    return (
+                      <div key={item.id} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', background: 'var(--glass-border)', opacity: 0.8 }}>
+                        <div style={{ width: '100%', paddingBottom: '100%', position: 'relative' }}>
+                          <img 
+                            src={item.src} 
+                            alt={item.title} 
+                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(100%)' }}
+                          />
+                        </div>
+                        <div style={{ position: 'absolute', top: '0', left: '0', right: '0', bottom: '0', background: 'rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.2s', ':hover': { opacity: 1 } }} onMouseEnter={(e) => e.currentTarget.style.opacity = 1} onMouseLeave={(e) => e.currentTarget.style.opacity = 0}>
+                          <button 
+                            onClick={() => handleRestore(item)}
+                            style={{ background: 'var(--text-primary)', color: 'var(--bg-primary)', padding: '0.5rem 1rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
+                          >
+                            Restore
+                          </button>
+                        </div>
+                        <div style={{ position: 'absolute', bottom: '0', left: '0', right: '0', background: 'var(--bg-primary)', padding: '0.4rem', fontSize: '0.7rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                          {daysLeft} days left
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
           </motion.div>
         )}
       </AnimatePresence>

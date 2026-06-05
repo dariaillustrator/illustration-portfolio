@@ -908,6 +908,10 @@ body.dark-theme .scroll-circle {
   }
 }
 
+.about-page-container {
+  padding-top: 4rem;
+}
+
 .about-grid {
   display: flex;
   flex-wrap: wrap;
@@ -941,7 +945,7 @@ body.dark-theme .scroll-circle {
   }
 
   .about-page-container {
-    padding: 5rem 0 4rem !important;
+    padding: calc(52px + 1rem - 3.5rem) 0 4rem !important;
   }
 
   .home-cta-block {

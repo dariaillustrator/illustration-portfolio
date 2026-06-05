@@ -35,7 +35,7 @@ export default function PricingCalculatorPage() {
           <div className="calc-group">
             <label className="calc-label">Complexity</label>
             <select className="form-select" value={complexity} onChange={e => setComplexity(Number(e.target.value))}>
-              <option value={150}>Sketch / Line Art</option>
+              <option value={200}>Sketch / Line Art</option>
               <option value={300}>Flat Color</option>
               <option value={600}>Full Render</option>
             </select>

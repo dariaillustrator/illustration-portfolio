@@ -156,11 +156,7 @@ export default function SiteHeader() {
     e.preventDefault();
     setIsServicesOpen(false);
     if (location.pathname !== '/') {
-      navigate('/', { state: { skipIntroDelay: true } });
-      setTimeout(() => {
-        const gallery = document.getElementById('gallery');
-        if (gallery) gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
+      navigate('/', { state: { skipIntroDelay: true, scrollToGallery: true } });
     } else {
       const gallery = document.getElementById('gallery');
       if (gallery) gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });

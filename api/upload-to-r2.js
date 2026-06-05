@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Content-Type must be application/json' });
   }
 
-  const { image, filename, title, aspect_ratio, hue, saturation, lightness, is_parked } = req.body;
+  const { image, original_image, filename, original_filename, title, aspect_ratio, hue, saturation, lightness, is_parked } = req.body;
 
   if (!image || !filename || aspect_ratio === undefined || hue === undefined || saturation === undefined || lightness === undefined) {
     return res.status(400).json({ error: 'Missing required parameters' });
@@ -39,11 +39,15 @@ export default async function handler(req, res) {
   if (!/^[a-zA-Z0-9_.-]+$/.test(filename)) {
     return res.status(400).json({ error: 'Invalid filename' });
   }
+  if (original_filename && !/^[a-zA-Z0-9_.-]+$/.test(original_filename)) {
+    return res.status(400).json({ error: 'Invalid original filename' });
+  }
 
-  // Security: Payload size limit (e.g., 5MB)
+  // Security: Payload size limit (e.g., 50MB for both files)
   const estimatedSize = (image.length * 3) / 4;
-  if (estimatedSize > 5 * 1024 * 1024) {
-    return res.status(413).json({ error: 'Payload too large (limit 5MB)' });
+  const originalSize = original_image ? (original_image.length * 3) / 4 : 0;
+  if (estimatedSize + originalSize > 50 * 1024 * 1024) {
+    return res.status(413).json({ error: 'Payload too large (limit 50MB total)' });
   }
 
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -58,46 +62,60 @@ export default async function handler(req, res) {
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 1. Decode base64 image data
-    const buffer = Buffer.from(image, 'base64');
+    // Helper for uploading to R2
+    const uploadBufferToR2 = async (base64Data, targetFilename) => {
+      const buffer = Buffer.from(base64Data, 'base64');
+      const r2Url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucketName}/objects/${targetFilename}`;
+      
+      const ext = targetFilename.split('.').pop().toLowerCase();
+      const mimeTypes = {
+        'png': 'image/png',
+        'webp': 'image/webp',
+        'gif': 'image/gif',
+        'svg': 'image/svg+xml'
+      };
+      const contentType = mimeTypes[ext] || 'image/jpeg';
 
-    // 2. Upload to Cloudflare R2 via REST API
-    const r2Url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${bucketName}/objects/${filename}`;
-    
-    // Determine Content-Type from extension
-    const ext = filename.split('.').pop().toLowerCase();
-    const mimeTypes = {
-      'png': 'image/png',
-      'webp': 'image/webp',
-      'gif': 'image/gif',
-      'svg': 'image/svg+xml'
+      const r2Res = await fetch(r2Url, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': contentType
+        },
+        body: buffer
+      });
+
+      if (!r2Res.ok) {
+        const errorText = await r2Res.text();
+        throw new Error(`Cloudflare R2 upload failed: ${r2Res.status} ${errorText}`);
+      }
+
+      const r2Data = await r2Res.json();
+      if (!r2Data.success) {
+        throw new Error(`Cloudflare R2 upload returned success=false: ${JSON.stringify(r2Data.errors)}`);
+      }
     };
-    const contentType = mimeTypes[ext] || 'image/jpeg';
 
+    // 1 & 2. Upload optimized and original images
     console.log(`Uploading ${filename} to Cloudflare R2...`);
-    const r2Res = await fetch(r2Url, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${apiToken}`,
-        'Content-Type': contentType
-      },
-      body: buffer
-    });
+    await uploadBufferToR2(image, filename);
 
-    if (!r2Res.ok) {
-      const errorText = await r2Res.text();
-      throw new Error(`Cloudflare R2 upload failed: ${r2Res.status} ${errorText}`);
-    }
-
-    const r2Data = await r2Res.json();
-    if (!r2Data.success) {
-      throw new Error(`Cloudflare R2 upload returned success=false: ${JSON.stringify(r2Data.errors)}`);
+    if (original_image && original_filename) {
+      console.log(`Uploading original ${original_filename} to Cloudflare R2...`);
+      await uploadBufferToR2(original_image, original_filename);
     }
 
     // 3. Construct public URL
     const cleanBase = publicUrlBase.endsWith('/') ? publicUrlBase.slice(0, -1) : publicUrlBase;
     const cleanFilename = filename.startsWith('/') ? filename.slice(1) : filename;
-    const fileUrl = `${cleanBase}/${cleanFilename}`;
+    let fileUrl = `${cleanBase}/${cleanFilename}`;
+    
+    if (original_image && original_filename) {
+      const originalExt = original_filename.split('.').pop().toLowerCase();
+      if (originalExt !== 'jpg' && originalExt !== 'jpeg') {
+        fileUrl += `?oext=${originalExt}`;
+      }
+    }
 
     // 4. Save to Supabase
     console.log(`Checking sorting mode...`);
