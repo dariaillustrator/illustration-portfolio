@@ -7,7 +7,22 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
+
+// Simple cross-device file save helper (replaces file-saver)
+function saveAs(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  // Cleanup after a short delay to allow download to start
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
+}
 
 // Helper to convert RGB to HSL in range [0, 1]
 function rgbToHsl(r, g, b) {
@@ -198,6 +213,39 @@ export default function AdminPage() {
   const [requests, setRequests] = useState([]);
 
   const fileInputRef = useRef(null);
+
+  // Toast notification system
+  const [toasts, setToasts] = useState([]);
+  const toastIdRef = useRef(0);
+
+  const showToast = useCallback((message, type = 'info', duration = 4000) => {
+    const id = ++toastIdRef.current;
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, duration);
+  }, []);
+
+  // Custom confirm dialog
+  const [confirmDialog, setConfirmDialog] = useState(null);
+
+  const showConfirm = useCallback((message, onConfirm, onCancel) => {
+    setConfirmDialog({ message, onConfirm, onCancel });
+  }, []);
+
+  const handleConfirmYes = useCallback(() => {
+    if (confirmDialog?.onConfirm) confirmDialog.onConfirm();
+    setConfirmDialog(null);
+  }, [confirmDialog]);
+
+  const handleConfirmNo = useCallback(() => {
+    if (confirmDialog?.onCancel) confirmDialog.onCancel();
+    setConfirmDialog(null);
+  }, [confirmDialog]);
+
+  // Portfolio download states
+  const [isDownloadingPortfolio, setIsDownloadingPortfolio] = useState(false);
+  const [portfolioDownloadProgress, setPortfolioDownloadProgress] = useState('');
 
   // Responsive width listener
   useEffect(() => {
