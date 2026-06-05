@@ -980,11 +980,17 @@ export default function AdminPage() {
       
       // Fetch blob and trigger real download (works cross-origin and on all devices)
       showToast('Starting download...', 'info', 2000);
-      const response = await fetch(downloadUrl);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const blob = await response.blob();
-      saveAs(blob, downloadName);
-      showToast('Download complete!', 'success');
+      try {
+        const response = await fetch(downloadUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        saveAs(blob, downloadName);
+        showToast('Download complete!', 'success');
+      } catch (fetchErr) {
+        console.warn("Fetch failed, falling back to new window open (CORS likely not configured on R2)", fetchErr);
+        window.open(downloadUrl, '_blank');
+        showToast('Opening original image in a new tab...', 'success', 3000);
+      }
     } catch (e) {
       console.error("Failed to trigger download", e);
       showToast('Could not download the image. Please try again.', 'error', 5000);
