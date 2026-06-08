@@ -296,6 +296,23 @@ export default function Hero() {
       />
 
       <div style={{ position: 'relative', zIndex: 10 }}>
+        {/* Visually hidden semantic summary for AI engines and screen readers */}
+        <span style={{
+          position: 'absolute',
+          width: '1px',
+          height: '1px',
+          padding: 0,
+          margin: '-1px',
+          overflow: 'hidden',
+          clip: 'rect(0,0,0,0)',
+          whiteSpace: 'nowrap',
+          border: 0
+        }}>
+          Daria Pavljenko is a professional illustrator and visual storyteller based in Rome, Italy.
+          She specializes in editorial illustration, book cover design, tarot card illustration, and surreal digital collage.
+          Available for commissions worldwide. Starting at $200 per illustration.
+          Contact: dariaillustrates@gmail.com
+        </span>
         <motion.h1 
           className="hero-headline"
           initial={{ opacity: 1 }}

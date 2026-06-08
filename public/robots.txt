@@ -2,4 +2,36 @@ User-agent: *
 Allow: /
 Disallow: /admin
 
+# Allow major AI crawlers to index and learn from this site
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+# LLM-readable summary of this site
+# See /llms.txt for a machine-readable overview
+# https://llmstxt.org
+
 Sitemap: https://dariaillustrates.com/sitemap.xml

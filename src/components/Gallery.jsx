@@ -543,7 +543,7 @@ export default function Gallery() {
 
                     <motion.img 
                       src={art.imgUrl}
-                      alt={art.title}
+                      alt={`"${art.title}" — original illustration by Daria Pavljenko`}
                       className="gallery-image"
                       loading={itemIdx < 2 ? "eager" : "lazy"}
                     />
@@ -629,7 +629,7 @@ export default function Gallery() {
               {displayIdx !== null && artworks[displayIdx] && (
                 <motion.img 
                   src={artworks[displayIdx].imgUrl} 
-                  alt={artworks[displayIdx].title}
+                  alt={`"${artworks[displayIdx].title}" — illustration by Daria Pavljenko, surreal digital art`}
                   className="island-image-clean"
                   animate={{ opacity: imageOpacity }}
                   transition={{
