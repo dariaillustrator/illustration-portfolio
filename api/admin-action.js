@@ -294,6 +294,21 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, trashList: newTrashList });
       }
 
+      case 'rename_item': {
+        const { itemId, newTitle } = payload;
+        if (!itemId || !newTitle) {
+          return res.status(400).json({ error: 'Missing itemId or newTitle' });
+        }
+
+        const { error } = await supabase
+          .from('gallery_items')
+          .update({ title: newTitle })
+          .eq('id', itemId);
+
+        if (error) throw error;
+        return res.status(200).json({ success: true });
+      }
+
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
     }

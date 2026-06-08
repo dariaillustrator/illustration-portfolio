@@ -4,7 +4,7 @@ import {
   Upload, Trash2, Lock, CheckCircle, AlertCircle, 
   Loader2, Sparkles, LogOut, X, Image as ImageIcon, ChevronRight,
   RefreshCw, ChevronLeft, Save, Download, Archive, Info,
-  Share2, Eye, Check, Square, CheckSquare
+  Share2, Eye, Check, Square, CheckSquare, Pencil
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import JSZip from 'jszip';
@@ -207,6 +207,11 @@ export default function AdminPage() {
   const [sortingMode, setSortingMode] = useState('chromatic_asc'); // 'chromatic_asc', 'chromatic_desc', 'manual'
   const [isDirty, setIsDirty] = useState(false);
   const [copiedColor, setCopiedColor] = useState('');
+  
+  // Rename states
+  const [editingId, setEditingId] = useState(null);
+  const [editingName, setEditingName] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
   
   // Selection states
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -595,6 +600,64 @@ export default function AdminPage() {
     setParkedItems(sortArtworks(newParked, 'chromatic_asc'));
     setIsDirty(true);
   };
+
+  const handleRenameStart = useCallback((id, title) => {
+    setEditingId(id);
+    setEditingName(title);
+  }, []);
+
+  const handleRenameCancel = useCallback(() => {
+    setEditingId(null);
+    setEditingName('');
+    setIsSavingName(false);
+  }, []);
+
+  const handleRenameConfirm = useCallback(async (id, isParked) => {
+    const trimmedName = editingName.trim();
+    if (!trimmedName) {
+      showToast('Title cannot be empty', 'error');
+      return;
+    }
+    
+    setIsSavingName(true);
+    try {
+      const response = await fetch('/api/admin-action', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          action: 'rename_item',
+          payload: {
+            itemId: id,
+            newTitle: trimmedName
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const resData = await response.json();
+        throw new Error(resData.error || 'Failed to rename artwork.');
+      }
+
+      // Update state in place
+      if (isParked) {
+        setParkedItems(prev => prev.map(item => item.id === id ? { ...item, title: trimmedName } : item));
+      } else {
+        setActiveItems(prev => prev.map(item => item.id === id ? { ...item, title: trimmedName } : item));
+      }
+
+      showToast('Artwork renamed successfully', 'success');
+      setEditingId(null);
+      setEditingName('');
+    } catch (err) {
+      console.error("Failed to rename artwork:", err.message);
+      showToast(`Failed to rename: ${err.message}`, 'error');
+    } finally {
+      setIsSavingName(false);
+    }
+  }, [editingName, showToast]);
 
   const handleCompleteRequest = async (id) => {
     try {
@@ -1901,6 +1964,18 @@ export default function AdminPage() {
           gap: 0.5rem;
         }
 
+        .admin-item-title-row, .parked-title-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+          min-height: 1.5rem;
+        }
+
+        .admin-item-title, .parked-title {
+          flex: 1;
+        }
+
         .admin-item-title {
           font-size: 0.9rem;
           font-weight: 600;
@@ -1908,6 +1983,79 @@ export default function AdminPage() {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+
+        .rename-trigger-btn {
+          background: transparent;
+          border: none;
+          color: var(--text-secondary);
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 0;
+          transition: opacity 0.2s, color 0.2s, background 0.2s;
+        }
+
+        .admin-item-card:hover .rename-trigger-btn,
+        .parked-item-card:hover .rename-trigger-btn {
+          opacity: 0.6;
+        }
+
+        .rename-trigger-btn:hover {
+          opacity: 1 !important;
+          color: var(--text-primary);
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .rename-input-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--glass-border);
+          border-radius: 6px;
+          padding: 2px 4px;
+          width: 100%;
+        }
+
+        .rename-input {
+          background: transparent;
+          border: none;
+          outline: none;
+          color: var(--text-primary);
+          font-family: var(--font-main);
+          font-size: 0.85rem;
+          font-weight: 500;
+          flex: 1;
+          min-width: 0;
+          padding: 2px 4px;
+        }
+
+        .rename-btn {
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.2s, opacity 0.2s;
+        }
+
+        .rename-btn:hover {
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .rename-btn.confirm {
+          color: #10b981;
+        }
+
+        .rename-btn.cancel {
+          color: #ef4444;
         }
 
         .admin-item-meta {
@@ -3218,7 +3366,52 @@ export default function AdminPage() {
                         <img src={item.src} alt={item.title} className="parked-img" />
                       </div>
                       <div className="parked-details">
-                        <div className="parked-title">{item.title}</div>
+                        {editingId === item.id ? (
+                          <div className="rename-input-wrapper" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="text"
+                              className="rename-input"
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleRenameConfirm(item.id, true);
+                                else if (e.key === 'Escape') handleRenameCancel();
+                              }}
+                              disabled={isSavingName}
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => handleRenameConfirm(item.id, true)}
+                              className="rename-btn confirm"
+                              disabled={isSavingName}
+                              title="Save title"
+                            >
+                              {isSavingName ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                            </button>
+                            <button
+                              onClick={handleRenameCancel}
+                              className="rename-btn cancel"
+                              disabled={isSavingName}
+                              title="Cancel"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="parked-title-row">
+                            <div className="parked-title" title={item.title}>{item.title}</div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRenameStart(item.id, item.title);
+                              }}
+                              className="rename-trigger-btn"
+                              title="Rename illustration"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          </div>
+                        )}
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleUnparkItemLocal(item); }}
                           className="publish-parked-btn"
@@ -3393,7 +3586,52 @@ export default function AdminPage() {
                       </div>
 
                       <div className="admin-item-details">
-                        <div className="admin-item-title">{item.title}</div>
+                        {editingId === item.id ? (
+                          <div className="rename-input-wrapper" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="text"
+                              className="rename-input"
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleRenameConfirm(item.id, false);
+                                else if (e.key === 'Escape') handleRenameCancel();
+                              }}
+                              disabled={isSavingName}
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => handleRenameConfirm(item.id, false)}
+                              className="rename-btn confirm"
+                              disabled={isSavingName}
+                              title="Save title"
+                            >
+                              {isSavingName ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                            </button>
+                            <button
+                              onClick={handleRenameCancel}
+                              className="rename-btn cancel"
+                              disabled={isSavingName}
+                              title="Cancel"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="admin-item-title-row">
+                            <div className="admin-item-title" title={item.title}>{item.title}</div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRenameStart(item.id, item.title);
+                              }}
+                              className="rename-trigger-btn"
+                              title="Rename illustration"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          </div>
+                        )}
                         <div className="admin-item-meta">
                           <div className="flex items-center gap-1.5">
                             <div 
