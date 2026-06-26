@@ -75,15 +75,35 @@
   --logo-filter: none;
 }
 
-/* Base transition for smooth theme switching */
-body {
-  transition: background-color 0.5s ease, color 0.5s ease;
-}
-
-body, header, footer, section, article, aside, 
-h1, h2, h3, h4, h5, h6, p, span, a, button, input, select, textarea,
-.paper-texture, .shop-page-wrapper, .shop-card, .shop-card-details, .shop-cta-tile, .custom-hover-card, .btn-primary, .btn-secondary {
-  transition: background-color 0.5s ease, color 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+/* Theme-switch transitions: only active during toggling to avoid slowing navigation */
+body.theme-transitioning,
+body.theme-transitioning header,
+body.theme-transitioning footer,
+body.theme-transitioning section,
+body.theme-transitioning article,
+body.theme-transitioning aside,
+body.theme-transitioning h1,
+body.theme-transitioning h2,
+body.theme-transitioning h3,
+body.theme-transitioning h4,
+body.theme-transitioning h5,
+body.theme-transitioning h6,
+body.theme-transitioning p,
+body.theme-transitioning span,
+body.theme-transitioning a,
+body.theme-transitioning button,
+body.theme-transitioning input,
+body.theme-transitioning select,
+body.theme-transitioning textarea,
+body.theme-transitioning .paper-texture,
+body.theme-transitioning .shop-page-wrapper,
+body.theme-transitioning .shop-card,
+body.theme-transitioning .shop-card-details,
+body.theme-transitioning .shop-cta-tile,
+body.theme-transitioning .custom-hover-card,
+body.theme-transitioning .btn-primary,
+body.theme-transitioning .btn-secondary {
+  transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
 body.dark-theme {
@@ -383,12 +403,12 @@ button { font-family: inherit; border: none; background: none; cursor: pointer; 
   font-size: 1rem;
 }
 
-.header-nav { display: flex; gap: 1.5rem; font-size: 0.95rem; font-weight: 500; font-family: var(--font-main); transition: font-size 0.4s ease, gap 0.4s ease; }
+.header-nav { display: flex; gap: 1.5rem; font-size: 0.95rem; font-weight: 500; font-family: var(--font-main); transition: font-size 0.25s ease, gap 0.25s ease; }
 .site-header.header-scrolled .header-nav { font-size: 0.85rem; gap: 1rem; }
 
 .header-nav a { transition: opacity 0.2s; }
 .header-nav a:hover { opacity: 0.6; }
-.header-icons { display: flex; gap: 0.8rem; margin-left: 0.8rem; padding-left: 0.8rem; border-left: 1px solid rgba(0,0,0,0.1); transition: transform 0.4s ease; align-items: center; }
+.header-icons { display: flex; gap: 0.8rem; margin-left: 0.8rem; padding-left: 0.8rem; border-left: 1px solid rgba(0,0,0,0.1); transition: transform 0.25s ease; align-items: center; }
 .site-header.header-scrolled .header-icons { transform: scale(0.85); }
 
 /* Icon Hover Effects */
@@ -584,7 +604,8 @@ body.dark-theme .scroll-circle {
 .gallery-card { 
   break-inside: avoid; 
   cursor: pointer; 
-  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
 }
 .gallery-card:hover {
   transform: translateY(-5px);
@@ -602,8 +623,9 @@ body.dark-theme .scroll-circle {
   width: 100%; 
   height: auto; 
   display: block; 
-  transition: transform 0.6s ease;
+  transition: transform 0.4s ease;
   border-radius: 8px;
+  will-change: transform;
 }
 .gallery-card:hover .gallery-image {
   transform: scale(1.02);

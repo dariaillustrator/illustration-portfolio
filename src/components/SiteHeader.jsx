@@ -79,6 +79,7 @@ export default function SiteHeader() {
   }, []);
 
   const toggleTheme = () => {
+    document.body.classList.add('theme-transitioning');
     if (document.body.classList.contains('dark-theme')) {
       document.body.classList.remove('dark-theme');
       document.body.classList.add('light-theme');
@@ -90,6 +91,8 @@ export default function SiteHeader() {
       localStorage.setItem('theme', 'dark');
       setIsDarkMode(true);
     }
+    // Remove transitioning class after animation completes
+    setTimeout(() => document.body.classList.remove('theme-transitioning'), 500);
   };
 
   useEffect(() => {
@@ -119,7 +122,7 @@ export default function SiteHeader() {
     };
 
     window.addEventListener('resize', handleResize);
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('scroll', handleScroll);
@@ -217,7 +220,7 @@ export default function SiteHeader() {
       style={{ 
         opacity: isLightboxOpen || !showNavbar ? 0 : 1, 
         transform: isLightboxOpen ? 'translateX(-50%) translateY(-20px)' : 'translateX(-50%) translateY(0)',
-        transition: 'opacity 0.6s ease, transform 0.6s ease, background 0.4s ease, height 0.5s cubic-bezier(0.22, 1, 0.36, 1), width 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
+        transition: 'opacity 0.3s ease, transform 0.3s ease, background 0.3s ease, height 0.35s cubic-bezier(0.22, 1, 0.36, 1), width 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
         pointerEvents: isLightboxOpen || !showNavbar ? 'none' : 'all',
         height: isMobileMenuOpen ? 'auto' : 
                 (isServicesOpen ? (windowWidth < 768 ? '450px' : '155px') : 
@@ -246,7 +249,7 @@ export default function SiteHeader() {
         alignItems: 'center',
         justifyContent: 'space-between', 
         padding: '0 1.2rem',
-        transition: 'all 0.5s cubic-bezier(0.22, 1, 0.36, 1)',
+        transition: 'all 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
         color: 'var(--text-primary)',
         fontWeight: 600,
         fontSize: scrolled ? '0.8rem' : '1rem',
