@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Mail, ArrowUpRight } from 'lucide-react';
 import { useUI } from '../context/UIContext';
 
+
 const InstagramIcon = ({ size = 20, ...props }) => (
   <svg
     viewBox="0 0 24 24"
@@ -75,6 +76,7 @@ export default function SiteFooter() {
   const footerLinks = [
     { title: "Navigation", links: [
       { name: "Gallery", action: handleGalleryClick },
+      { name: "Shop", path: "/shop" },
       ...(!isMobile ? [{ name: "Services", path: "/" }] : []),
       { name: "Pricing", path: "/pricing" },
       { name: "About", path: "/about" }
@@ -92,7 +94,9 @@ export default function SiteFooter() {
         <div className="footer-grid">
           {/* Brand Section */}
           <div className="footer-brand">
-            <h2 style={{ fontSize: '2.5rem', fontWeight: 'normal', marginBottom: '1.5rem', letterSpacing: '0.05em' }}>DARIA</h2>
+            <h2 style={{ marginBottom: '1.5rem', fontSize: '2.5rem', fontWeight: 'normal', letterSpacing: '0.05em', lineHeight: 1 }}>
+              DARIA
+            </h2>
             <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', maxWidth: '300px', lineHeight: 1.6, marginBottom: '2rem' }}>
               Visual Storyteller & Printmaker. Supporting narrative worlds through art.
             </p>
@@ -120,7 +124,7 @@ export default function SiteFooter() {
                         className="footer-nav-link"
                         style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px', transition: 'transform 0.2s' }}
                       >
-                        {link.name}
+                        {link.name} <ArrowUpRight size={12} style={{ opacity: 0.3 }} />
                       </button>
                     )}
                   </li>

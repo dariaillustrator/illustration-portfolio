@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import SkarbLogo from './SkarbLogo';
 
 class Comet {
   constructor(width, height) {
@@ -325,10 +327,57 @@ export default function Hero() {
           className="hero-subheadline"
           initial={{ opacity: 0, y: 10 }}
           animate={isTypingDone ? { opacity: 0.6, y: 0 } : {}}
-          transition={{ duration: 2.2, delay: 0.8 }}
+          transition={{ duration: 1.5, delay: 0.4 }}
         >
           Visual Storyteller & Printmaker
         </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={isTypingDone ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 1.2, delay: 0.8 }}
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            marginTop: '2.5rem'
+          }}
+        >
+          <Link 
+            to="/shop" 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.8rem',
+              padding: '0.6rem 1.4rem',
+              background: 'rgba(120, 120, 120, 0.05)',
+              border: '1px solid rgba(120, 120, 120, 0.15)',
+              borderRadius: 'var(--radius-lg)',
+              textDecoration: 'none',
+              color: 'var(--text-primary)',
+              transition: 'background 0.3s, border-color 0.3s, transform 0.2s',
+              whiteSpace: 'nowrap'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(120, 120, 120, 0.1)';
+              e.currentTarget.style.borderColor = 'rgba(120, 120, 120, 0.25)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(120, 120, 120, 0.05)';
+              e.currentTarget.style.borderColor = 'rgba(120, 120, 120, 0.15)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'scale(0.98)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+          >
+            <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.15em', opacity: 0.85, fontWeight: 600 }}>Shop now</span>
+          </Link>
+        </motion.div>
       </div>
 
       <motion.div 

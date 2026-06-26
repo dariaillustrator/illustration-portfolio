@@ -72,6 +72,7 @@
   --bg-primary-rgb: 246, 243, 236;
   --text-primary-rgb: 29, 29, 31;
   --bg-paper: #ece8de;
+  --logo-filter: none;
 }
 
 /* Base transition for smooth theme switching */
@@ -79,7 +80,9 @@ body {
   transition: background-color 0.5s ease, color 0.5s ease;
 }
 
-* {
+body, header, footer, section, article, aside, 
+h1, h2, h3, h4, h5, h6, p, span, a, button, input, select, textarea,
+.paper-texture, .shop-page-wrapper, .shop-card, .shop-card-details, .shop-cta-tile, .custom-hover-card, .btn-primary, .btn-secondary {
   transition: background-color 0.5s ease, color 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease;
 }
 
@@ -96,6 +99,7 @@ body.dark-theme {
   --bg-primary-rgb: 17, 17, 17;
   --text-primary-rgb: 253, 253, 252;
   --bg-paper: #1c1c1e;
+  --logo-filter: invert(1) brightness(2);
 }
 
 /* Footer Links Accessibility Styles */
@@ -467,7 +471,7 @@ section { padding: 4rem 0; }
   bottom: 13rem;
   left: 50%;
   transform: translateX(-50%);
-  animation: bounce-magnetic 3s infinite cubic-bezier(0.4, 0, 0.2, 1);
+  animation: bounce-magnetic 4s infinite cubic-bezier(0.4, 0, 0.2, 1);
   opacity: 0.8;
   z-index: 20;
 }

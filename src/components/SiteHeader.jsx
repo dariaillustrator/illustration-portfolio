@@ -292,6 +292,8 @@ export default function SiteHeader() {
               Gallery
             </a>
 
+            <Link to="/shop" style={{ color: 'inherit', textDecoration: 'none' }} onMouseEnter={() => setIsServicesOpen(false)} onClick={() => setIsServicesOpen(false)}>Shop</Link>
+
             <Link to="/pricing" style={{ color: 'inherit', textDecoration: 'none' }} onMouseEnter={() => setIsServicesOpen(false)} onClick={() => setIsServicesOpen(false)}>Pricing</Link>
             
             <button 
@@ -369,6 +371,7 @@ export default function SiteHeader() {
                   Services <ArrowRight size={18} style={{ transform: isServicesOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.3s' }} />
                 </div>
               )}
+              <Link to="/shop" onClick={() => setIsMobileMenuOpen(false)} style={{ color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700 }}>Shop</Link>
               <Link to="/pricing" onClick={() => setIsMobileMenuOpen(false)} style={{ color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700 }}>Pricing</Link>
               <div 
                 onClick={() => { setIsMobileMenuOpen(false); toggleFaq(); }}

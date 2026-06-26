@@ -103,7 +103,7 @@ export default function HomePage() {
                 transition: 'opacity 0.3s ease, transform 0.3s ease',
                 border: 'none',
                 cursor: 'pointer',
-                marginBottom: '4rem'
+                marginBottom: '1.5rem'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.opacity = 0.8;
@@ -119,20 +119,166 @@ export default function HomePage() {
           </ScrollReveal>
 
           <ScrollReveal style={{ width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>
-              <div style={{ maxWidth: '800px', textAlign: 'left' }}>
-                <h3 style={{ fontSize: '1rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '2rem', fontWeight: 700 }}>
+            <style>{`
+              /* Reduce top padding of the outer CTA block container */
+              .home-cta-block {
+                padding-top: 2.5rem !important;
+                padding-bottom: 4rem !important;
+              }
+
+              .work-with-me-container {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                width: 100%;
+                gap: 4rem;
+                padding: 0 0 1rem 0;
+              }
+
+              .work-with-me-text {
+                flex: 1.2;
+                max-width: 600px;
+                text-align: left;
+              }
+
+              .section-label {
+                font-size: 1rem;
+                letter-spacing: 0.2em;
+                text-transform: uppercase;
+                color: var(--text-secondary);
+                margin-bottom: 2rem;
+                font-weight: 700;
+              }
+
+              .cta-headline {
+                font-family: var(--font-editorial);
+                font-size: 2.8rem;
+                font-weight: normal;
+                line-height: 1.1;
+                margin-bottom: 1.5rem;
+                color: var(--text-primary);
+              }
+
+              .cta-desc {
+                color: var(--text-primary);
+                margin-bottom: 3rem;
+                line-height: 1.5;
+                opacity: 0.8;
+                font-size: 1.1rem;
+                max-width: 550px;
+              }
+
+              .work-with-me-carousel-wrapper {
+                flex: 1.5;
+                width: 100%;
+                max-width: 720px;
+                overflow: hidden;
+                position: relative;
+              }
+
+              .carousel-fade-mask {
+                width: 100%;
+                overflow: hidden;
+                position: relative;
+                mask-image: linear-gradient(to right, transparent 0%, #000 15%, #000 85%, transparent 100%);
+                -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 15%, #000 85%, transparent 100%);
+              }
+
+              .carousel-track {
+                display: flex;
+                width: max-content;
+                gap: 0.5rem;
+                animation: infinite-scroll 25s linear infinite;
+              }
+
+              .carousel-slide {
+                width: 200px;
+                height: 250px;
+                flex-shrink: 0;
+                border-radius: 2px;
+                overflow: hidden;
+                border: 1px solid var(--border);
+                background: rgba(120, 120, 120, 0.05);
+              }
+
+              .carousel-image {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+              }
+
+              @keyframes infinite-scroll {
+                from {
+                  transform: translateX(0);
+                }
+                to {
+                  transform: translateX(-50%);
+                }
+              }
+
+              @media (max-width: 900px) {
+                .work-with-me-container {
+                  flex-direction: column;
+                  gap: 3rem;
+                  align-items: flex-start;
+                }
+
+                .work-with-me-text {
+                  max-width: 100%;
+                }
+
+                .work-with-me-carousel-wrapper {
+                  max-width: 100%;
+                }
+                
+                .carousel-slide {
+                  width: 140px;
+                  height: 175px;
+                }
+              }
+            `}</style>
+            
+            <div className="work-with-me-container">
+              <div className="work-with-me-text">
+                <h3 className="section-label">
                   Work with me
                 </h3>
-                <h2 className="cta-headline" style={{ lineHeight: 1 }}>
-                  Art for your projects.
+                <h2 className="cta-headline">
+                  Art for your Space.
                 </h2>
-                <p className="cta-desc" style={{ color: 'var(--text-primary)', marginBottom: '3rem', lineHeight: 1.4, maxWidth: '700px', opacity: 0.8 }}>
-                  Bring unique illustrations into your creative projects. Contact me for custom quotes and commissioned artworks.
+                <p className="cta-desc">
+                  Bring unique prints and illustrations into your home. Discover our print shop collection in partnership with Skarb prints.
                 </p>
-                <Link to="/pricing" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
-                  Get a Quote <ArrowRight size={20} />
+                <Link to="/shop" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
+                  Shop Prints <ArrowRight size={20} />
                 </Link>
+              </div>
+
+              <div className="work-with-me-carousel-wrapper">
+                <div className="carousel-fade-mask">
+                  <div className="carousel-track">
+                    {[
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD01_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD03_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD05_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD06_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD08_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD11_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD13_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD01_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD03_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD05_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD06_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD08_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD11_INT.webp',
+                      'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD13_INT.webp'
+                    ].map((mockup, idx) => (
+                      <div key={idx} className="carousel-slide">
+                        <img src={mockup} alt="Daria illustrations mockup" className="carousel-image" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </ScrollReveal>

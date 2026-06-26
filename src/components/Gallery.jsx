@@ -81,6 +81,16 @@ export default function Gallery() {
   const location = useLocation();
   const skipDelay = location.state?.skipIntroDelay;
 
+  const [isAtTop, setIsAtTop] = useState(typeof window !== 'undefined' ? window.scrollY < 100 : true);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsAtTop(window.scrollY < 100);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
@@ -451,10 +461,12 @@ export default function Gallery() {
         .masonry-columns {
           display: flex;
           gap: 2rem;
-          margin: 6rem auto 0;
+          margin: -9vh auto 0;
           padding-left: 4rem;
           padding-right: 4rem;
           padding-bottom: 2rem;
+          position: relative;
+          z-index: 5;
         }
         .masonry-col {
           flex: 1;
@@ -468,6 +480,7 @@ export default function Gallery() {
             padding-left: 3rem;
             padding-right: 3rem;
             padding-bottom: 1.5rem;
+            margin-top: -7vh;
           }
           .masonry-col { gap: 1.5rem; }
         }
@@ -477,9 +490,17 @@ export default function Gallery() {
             padding-left: 1rem;
             padding-right: 1rem;
             padding-bottom: 1rem;
-            margin-top: 4rem;
+            margin-top: -5vh;
           }
           .masonry-col { gap: 0.8rem; }
+        }
+
+        .hero-floating-active {
+          animation: bounce-images 4s infinite cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes bounce-images {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(8px); }
         }
 
         /* 24h New Badge Styles */
@@ -539,7 +560,10 @@ export default function Gallery() {
                     aspectRatio: art.aspectRatio
                   }}
                 >
-                  <div className="gallery-item">
+                  <div 
+                    className={`gallery-item ${isAtTop && itemIdx === 0 ? 'hero-floating-active' : ''}`}
+                    style={isAtTop && itemIdx === 0 ? { animationDelay: `-${1.2 - (colIdx * 0.4)}s` } : {}}
+                  >
 
                     <motion.img 
                       src={art.imgUrl}
