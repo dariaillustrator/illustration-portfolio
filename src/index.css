@@ -606,29 +606,56 @@ body.dark-theme .scroll-circle {
   cursor: pointer; 
   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
+  position: relative;
+  width: 100%;
 }
 .gallery-card:hover {
   transform: translateY(-5px);
 }
 
 .gallery-card.clean-card .gallery-item { 
+  position: relative;
+  width: 100%;
+  height: 100%;
   box-shadow: none; 
-  height: auto; 
   overflow: hidden;
   border-radius: 8px;
   /* Prevent Safari overflow clipping bug during transform scaling */
   transform: translateZ(0);
+  background-color: var(--bg-secondary);
 }
 .gallery-image { 
   width: 100%; 
-  height: auto; 
+  height: 100%; 
   display: block; 
+  object-fit: cover;
   transition: transform 0.4s ease;
   border-radius: 8px;
   will-change: transform;
 }
 .gallery-card:hover .gallery-image {
   transform: scale(1.02);
+}
+
+/* Skeleton Loader Shimmer */
+.skeleton-loader {
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 25%,
+    var(--border) 50%,
+    var(--bg-secondary) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite linear;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 /* End Cards (Homepage Footer) */

@@ -69,6 +69,7 @@ export default function Gallery() {
   const [artworks, setArtworks] = useState(staticArtworks);
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [displayIdx, setDisplayIdx] = useState(null);
+  const [loadedImages, setLoadedImages] = useState({});
   const [imageOpacity, setImageOpacity] = useState(1);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
   const [sortingMode, _setSortingMode] = useState('chromatic_asc'); // 'chromatic_asc', 'chromatic_desc', 'manual'
@@ -564,12 +565,34 @@ export default function Gallery() {
                     className={`gallery-item ${isAtTop && itemIdx === 0 ? 'hero-floating-active' : ''}`}
                     style={isAtTop && itemIdx === 0 ? { animationDelay: `-${1.2 - (colIdx * 0.4)}s` } : {}}
                   >
+                    <AnimatePresence>
+                      {!loadedImages[art.id] && (
+                        <motion.div
+                          className="skeleton-loader"
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.3 }}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '100%',
+                            zIndex: 2,
+                            borderRadius: '8px'
+                          }}
+                        />
+                      )}
+                    </AnimatePresence>
 
                     <motion.img 
                       src={art.imgUrl}
                       alt={`"${art.title}" — original illustration by Daria Pavljenko`}
                       className="gallery-image"
                       loading={itemIdx < 2 ? "eager" : "lazy"}
+                      onLoad={() => setLoadedImages(prev => ({ ...prev, [art.id]: true }))}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: loadedImages[art.id] ? 1 : 0 }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
                     />
                   </div>
                 </motion.div>
