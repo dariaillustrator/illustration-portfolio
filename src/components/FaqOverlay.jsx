@@ -7,15 +7,45 @@ export default function FaqOverlay() {
   const { isFaqOpen, closeFaq } = useUI();
   const [openIdx, setOpenIdx] = React.useState(null);
 
+  const lastFocusedElement = React.useRef(null);
+
   React.useEffect(() => {
-    if (!isFaqOpen) return;
+    if (!isFaqOpen) {
+      if (lastFocusedElement.current) lastFocusedElement.current.focus();
+      return;
+    }
+
+    lastFocusedElement.current = document.activeElement;
+    setTimeout(() => {
+      const closeBtn = document.querySelector('button[aria-label="Close FAQ"]');
+      if (closeBtn) closeBtn.focus();
+    }, 50);
 
     // Body scroll lock
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
 
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') closeFaq();
+      if (e.key === 'Escape') {
+        closeFaq();
+      } else if (e.key === 'Tab') {
+        const focusableElements = document.querySelectorAll('div[role="dialog"] button, div[role="dialog"] a, div[role="dialog"] [tabindex]:not([tabindex="-1"])');
+        if (!focusableElements.length) return;
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            lastElement.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            firstElement.focus();
+            e.preventDefault();
+          }
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);

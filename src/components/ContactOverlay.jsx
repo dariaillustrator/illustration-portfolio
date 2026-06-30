@@ -43,8 +43,21 @@ export default function ContactOverlay() {
   const [copied, setCopied] = useState(false);
   const [hoveredIdx, setHoveredIdx] = useState(null);
 
+  const lastFocusedElement = React.useRef(null);
+
   useEffect(() => {
-    if (!isContactOpen) return;
+    if (!isContactOpen) {
+      if (lastFocusedElement.current) {
+        lastFocusedElement.current.focus();
+      }
+      return;
+    }
+
+    lastFocusedElement.current = document.activeElement;
+    setTimeout(() => {
+      const closeBtn = document.querySelector('button[aria-label="Close Contact Modal"]');
+      if (closeBtn) closeBtn.focus();
+    }, 50);
 
     // Body scroll lock
     const originalStyle = window.getComputedStyle(document.body).overflow;
@@ -53,6 +66,23 @@ export default function ContactOverlay() {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         closeContact();
+      } else if (e.key === 'Tab') {
+        const focusableElements = document.querySelectorAll('div[role="dialog"] button, div[role="dialog"] a, div[role="dialog"] [tabindex]:not([tabindex="-1"])');
+        if (!focusableElements.length) return;
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            lastElement.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            firstElement.focus();
+            e.preventDefault();
+          }
+        }
       }
     };
 
@@ -199,13 +229,11 @@ export default function ContactOverlay() {
           gap: '1rem'
         }}>
           {contacts.map((contact, i) => {
-            const isLink = contact.action.type === 'link';
+            const isLink = contact.action.type === 'link' || contact.action.type === 'tab';
             const WrapperTag = isLink ? 'a' : 'div';
-            const extraProps = isLink 
-              ? { href: contact.action.href } 
-              : (contact.action.type === 'tab' 
-                ? { onClick: () => window.open(contact.action.href, '_blank', 'noopener,noreferrer'), style: { cursor: 'pointer' } } 
-                : {});
+            const extraProps = contact.action.type === 'tab' 
+              ? { href: contact.action.href, target: '_blank', rel: 'noopener noreferrer' } 
+              : (isLink ? { href: contact.action.href } : {});
 
             return (
               <motion.div
@@ -233,8 +261,7 @@ export default function ContactOverlay() {
                     flex: 1,
                     minWidth: 0, // critical to allow flex children to shrink and prevent overflow
                     color: 'var(--text-primary)',
-                    textDecoration: 'none',
-                    ...((!isLink && contact.action.type !== 'tab') ? {} : { cursor: 'pointer' })
+                    textDecoration: 'none'
                   }}
                 >
                   <div style={{ color: 'var(--text-primary)', opacity: 0.8, display: 'flex', alignItems: 'center', flexShrink: 0 }}>

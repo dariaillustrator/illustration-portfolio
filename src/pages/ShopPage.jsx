@@ -46,7 +46,7 @@ export default function ShopPage() {
     return () => {
       window.removeEventListener('mousemove', updateMouse);
     };
-  }, [mouseX, mouseY]);
+  }, []);
 
   const shopItems = [
     { id: 'DD01', title: 'Balance', src: 'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD01.webp', mockupSrc: 'https://pub-3303a2731bea4f92b60a57762526c7a6.r2.dev/shop/DD01_INT.webp', skarbUrl: 'https://skarbprints.com/products/balance?variant=56856936874308' },

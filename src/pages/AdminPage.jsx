@@ -265,6 +265,49 @@ export default function AdminPage() {
     setConfirmDialog(null);
   }, [confirmDialog]);
 
+  const lastFocusedConfirmElement = useRef(null);
+
+  useEffect(() => {
+    if (!confirmDialog) {
+      if (lastFocusedConfirmElement.current) {
+        lastFocusedConfirmElement.current.focus();
+      }
+      return;
+    }
+
+    lastFocusedConfirmElement.current = document.activeElement;
+    
+    setTimeout(() => {
+      const cancelBtn = document.querySelector('.confirm-modal-actions button:first-child');
+      if (cancelBtn) cancelBtn.focus();
+    }, 50);
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        handleConfirmNo();
+      } else if (e.key === 'Tab') {
+        const focusableElements = document.querySelectorAll('.confirm-modal-actions button');
+        if (!focusableElements.length) return;
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            lastElement.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            firstElement.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmDialog, handleConfirmNo]);
+
   // Selection toggle helper functions
   const toggleSelect = useCallback((id) => {
     setSelectedIds(prev => {
@@ -4031,16 +4074,19 @@ export default function AdminPage() {
                 boxShadow: '0 24px 48px rgba(0, 0, 0, 0.15)',
                 fontFamily: 'var(--font-main)'
               }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="confirm-modal-title"
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div style={{ padding: '0.5rem', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '10px', flexShrink: 0 }}>
                   <AlertCircle size={22} style={{ color: '#f59e0b' }} />
                 </div>
-                <p style={{ fontSize: '0.95rem', lineHeight: 1.6, color: 'var(--text-primary)', margin: 0 }}>
+                <p id="confirm-modal-title" style={{ fontSize: '0.95rem', lineHeight: 1.6, color: 'var(--text-primary)', margin: 0 }}>
                   {confirmDialog.message}
                 </p>
               </div>
-              <div style={{ display: 'flex', gap: '0.8rem', justifyContent: 'flex-end' }}>
+              <div className="confirm-modal-actions" style={{ display: 'flex', gap: '0.8rem', justifyContent: 'flex-end' }}>
                 <button
                   onClick={handleConfirmNo}
                   style={{

@@ -367,21 +367,23 @@ export default function SiteHeader() {
             <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
               <a href="/" onClick={handleGalleryClick} style={{ color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700 }}>Gallery</a>
               {windowWidth >= 768 && (
-                <div 
+                <button 
                   onClick={() => setIsServicesOpen(!isServicesOpen)}
-                  style={{ color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  aria-expanded={isServicesOpen}
+                  aria-haspopup="true"
+                  style={{ background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}
                 >
                   Services <ArrowRight size={18} style={{ transform: isServicesOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.3s' }} />
-                </div>
+                </button>
               )}
               <Link to="/shop" onClick={() => setIsMobileMenuOpen(false)} style={{ color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700 }}>Shop</Link>
               <Link to="/pricing" onClick={() => setIsMobileMenuOpen(false)} style={{ color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700 }}>Pricing</Link>
-              <div 
+              <button 
                 onClick={() => { setIsMobileMenuOpen(false); toggleFaq(); }}
-                style={{ color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700, cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700, cursor: 'pointer', textAlign: 'left', width: '100%' }}
               >
                 FAQ
-              </div>
+              </button>
               <Link to="/about" onClick={() => setIsMobileMenuOpen(false)} style={{ color: 'inherit', textDecoration: 'none', fontSize: '1.2rem', fontWeight: windowWidth < 768 ? 500 : 700 }}>About</Link>
             </div>
           </motion.div>

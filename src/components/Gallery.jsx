@@ -361,11 +361,21 @@ export default function Gallery() {
     return cols;
   }, [artworks, windowWidth]);
 
+  const lastFocusedElement = React.useRef(null);
+
   useEffect(() => {
     if (selectedIdx !== null) {
       document.body.classList.add('lightbox-open');
+      lastFocusedElement.current = document.activeElement;
+      setTimeout(() => {
+        const closeBtn = document.querySelector('.island-close');
+        if (closeBtn) closeBtn.focus();
+      }, 50);
     } else {
       document.body.classList.remove('lightbox-open');
+      if (lastFocusedElement.current) {
+        lastFocusedElement.current.focus();
+      }
     }
     return () => document.body.classList.remove('lightbox-open');
   }, [selectedIdx]);
@@ -380,6 +390,23 @@ export default function Gallery() {
         next();
       } else if (e.key === 'ArrowLeft') {
         prev();
+      } else if (e.key === 'Tab') {
+        const focusableElements = document.querySelectorAll('.floating-island-overlay button');
+        if (!focusableElements.length) return;
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            lastElement.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            firstElement.focus();
+            e.preventDefault();
+          }
+        }
       }
     };
 
@@ -545,7 +572,7 @@ export default function Gallery() {
           <div key={colIdx} className="masonry-col">
             <AnimatePresence mode="popLayout">
               {col.map((art, itemIdx) => (
-                <motion.div 
+                <motion.button 
                   key={art.id} 
                   layout 
                   exit={{ opacity: 0, scale: 0.9 }} 
@@ -557,8 +584,16 @@ export default function Gallery() {
                   }}
                   onClick={() => openIsland(art.id)}
                   className="gallery-card clean-card"
+                  aria-label={`View illustration: ${art.title}`}
                   style={{ 
-                    aspectRatio: art.aspectRatio
+                    aspectRatio: art.aspectRatio,
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    margin: 0,
+                    cursor: 'pointer',
+                    display: 'block',
+                    width: '100%'
                   }}
                 >
                   <div 
@@ -595,7 +630,7 @@ export default function Gallery() {
                       transition={{ duration: 0.5, ease: "easeOut" }}
                     />
                   </div>
-                </motion.div>
+                </motion.button>
               ))}
             </AnimatePresence>
           </div>

@@ -6,8 +6,19 @@ import { useUI } from '../context/UIContext';
 export default function LegalOverlay() {
   const { legalType, closeLegal } = useUI();
 
+  const lastFocusedElement = React.useRef(null);
+
   useEffect(() => {
-    if (!legalType) return;
+    if (!legalType) {
+      if (lastFocusedElement.current) lastFocusedElement.current.focus();
+      return;
+    }
+
+    lastFocusedElement.current = document.activeElement;
+    setTimeout(() => {
+      const closeBtn = document.querySelector('button[aria-label="Close Legal Modal"]');
+      if (closeBtn) closeBtn.focus();
+    }, 50);
 
     // Body scroll lock
     const originalStyle = window.getComputedStyle(document.body).overflow;
@@ -16,6 +27,23 @@ export default function LegalOverlay() {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         closeLegal();
+      } else if (e.key === 'Tab') {
+        const focusableElements = document.querySelectorAll('div[role="dialog"] button, div[role="dialog"] a, div[role="dialog"] [tabindex]:not([tabindex="-1"])');
+        if (!focusableElements.length) return;
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            lastElement.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            firstElement.focus();
+            e.preventDefault();
+          }
+        }
       }
     };
 
